@@ -2,10 +2,9 @@
 Asyncio ZMQ tools
 -----------------
 
-- `create_zmq_stream`/`ZmqStream`: as high level coroutine based interface to zmq messaging
-- `ZmqRemote`: dispatch methods on in different process using zmq
+- `create_zmq_stream`/`ZmqStream`: a high level coroutine based interface to zmq messaging
+- `ZmqRemote`: dispatch methods in a different process using zmq
 - `ZmqProcess`: spawn process and use `ZmqRemote` to access remote object
-- `ZmqSpawn`: 
 """
 
 import aiozmq
@@ -21,17 +20,22 @@ from collections import namedtuple
 import types
 import os
 
+import logging
+logger = logging.getLogger(__name__)
+
 @coroutine
 def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     """
     create ZmqStream stream based on `aiozmq.ZmqEventLoop.create_zmq_connection`
     """
     if bind:
-        info = ('bind', bind)
+        info = (zmq_type, 'bind', bind)
     elif connect:
-        info = ('connect', connect)
+        info = (zmq_type, 'connect', connect)
     else:
-        info = ('socket',)
+        info = (zmq_type, 'socket','')
+
+    logger.debug('create zmq stream %s (%s=%s)', *info)
 
     if limit is None:
         limit = 16
@@ -41,6 +45,7 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
             zmq_type=zmq_type, connect=connect, bind=bind)
 
     pr._stream = ZmqStream(tr, pr, limit)
+    logger.debug('created %s', pr._stream)
     return pr._stream
 
 
@@ -89,18 +94,23 @@ class ZmqStream:
     @coroutine
     def read(self):
         """read a multipart message"""
+        logger.debug('%s reading', self)
         datas = yield from self._pr._reading.get()
+        logger.debug('%s read %s', self, [len(p) for p in datas])
         if isinstance(datas, Exception):
             raise datas
-        if self._paused and self._pr_reading.qsize() < self._limit:
-            self._pased = False
+        if self._paused and self._pr._reading.qsize() < self._limit:
+            logger.debug('%s resumes read', self)
+            self._paused = False
             self._tr.resume_reading()
         return datas
         
     @coroutine
     def write(self, *datas):
         """write a multipart message"""
+        logger.debug('%s writes %s', self, [len(p) for p in datas])
         yield from self._pr._writing.wait()
+        logger.debug('%s writing', self)
         self._tr.write(datas)
 
     @coroutine
@@ -119,7 +129,7 @@ class ZmqStream:
         if skip:
             yield from self.write(list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]])
         else:
-            yield from self.write(*map(pickle.dumps, datas[skip:]))
+            yield from self.write(*[pickle.dumps(d) for d in datas[skip:]])
 
     def __str__(self):
         binds = list(self.bindings())
@@ -141,10 +151,12 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
         self._stream = None
 
     def connection_made(self, transport):
+        logger.debug('%s made connection', self)
         self._writing.set()
 
     def connection_lost(self, exc):
         # signal error/close
+        logger.debug('%s lost connection %s', self, exc)
         asyncio.async(self._reading.put(exc or []))
         if exc is None:
             self._closed.set()
@@ -153,13 +165,17 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
         ...
 
     def pause_writing(self):
+        logger.debug('%s pauses write', self)
         self._writing.clear()
 
     def resume_writing(self):
+        logger.debug('%s resumes write', self)
         self._writing.set()
 
     def msg_received(self, datas):
+        logger.debug('%s received %s', self, [len(p) for p in datas])
         if self._reading.qsize()-1 >= self._limit:
+            logger.debug('%s full, pausing read', self)
             self._stream._paused = True
             self._stream._tr.pause_reading()
         asyncio.async(self._reading.put(datas))
@@ -173,11 +189,13 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
 
 Result = namedtuple('Result', 'value')
 
-class Normal(Result):
+class Success(Result):
+    kind = 'success'
     def __call__(self):
         return self.value
 
 class Except(Result):
+    kind = 'except'
     def __call__(self):
         raise self.value
 
@@ -212,9 +230,13 @@ class remote:
     @coroutine
     def __call__(self, obj, *args, **kws):
         if self._pre:
+            logger.debug('%s calling %s:pre', obj, self.name)
             args, kws = yield from self._pre(obj, args, kws)
+        logger.debug('%s remotes %s', obj, self.name)
         result = yield from obj.__remote__(self.name, args, kws)
+        logger.debug('%s got %s', obj, result)
         if self._post:
+            logger.debug('%s calling %s:post', obj, self.name)
             return (yield from self._post(obj, result, args, kws))
         else:
             return result()
@@ -287,9 +309,6 @@ class ZmqRemote:
         state['_send'] = None
         return state
 
-    def __setstate__(self, state):
-        self.__dict__ = state
-
     @property
     def dispatching(self):
         """
@@ -314,6 +333,7 @@ class ZmqRemote:
 
     @coroutine
     def _dispatching(self):
+        logger.debug('%s starts dispatching', self)
         recv = self._recv
         while True:
             request = yield from recv.pull()
@@ -324,10 +344,11 @@ class ZmqRemote:
 
     @coroutine
     def _dispatch(self, name, args, kws):
+        logger.debug('%s dispatches %s(*%s, **%s)', self, name, args, kws)
         method = getattr(self, name)
         try: 
             result = yield from method(*args, **kws)
-            return Normal(result)
+            return Success(result)
         except Exception as e:
             return Except(e)
 
@@ -336,6 +357,7 @@ class ZmqRemote:
         """
         setup an interacing connection
         """
+        logger.debug('%s interfaces on %s', self, address)
         self._recv = None
         self._send = yield from create_zmq_stream(zmq.REQ, connect=address)
 
@@ -364,14 +386,20 @@ class ZmqRemote:
         """
         return 'pong'
 
+def call_proc(self, *args, **kws):
+    logging.basicConfig(format='[%(process)d] %(levelname)s %(message)s')
+    logging.getLogger('zeroflo').setLevel("DEBUG")
+    logger.debug('%s spawned, calling __proc__', self)
+    return self.__proc__(*args, **kws)
+
 class ZmqProcess(ZmqRemote):
     """
     remote call to process via zmq messages
     """
-    _pid = None
+    _proc = None
 
     def __del__(self):
-        if self._pid:
+        if self._proc:
             asyncio.async(self.close())
 
     @coroutine
@@ -379,51 +407,31 @@ class ZmqProcess(ZmqRemote):
         """
         setup the process and open connection to it
         """
-        self._pid = self.__spawn__(address)
+        logger.debug('%s spawning with %s', self, address)
+        proc = mp.Process(target=call_proc, name=str(self), args=(self,address))
+        proc.start()
+        self._proc = proc.pid
         yield from self.setup_interfacing(address)
 
     def __proc__(self, address):
+        logger.debug('%s spawned with %s', self, address)
         asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
         asyncio.get_event_loop().run_until_complete(self.__main__(address))
 
     @coroutine
     def __main__(self, address):
+        logger.debug('%s main started with %s', self, address)
         looping = yield from self.setup_dispatching(address)
-        yield from looping
+        yield from asyncio.gather(looping)
 
     @remote
     def close(self):
         """
         close the remote process
         """
+        logger.debut('%s closes', self)
         asyncio.async(self._recv.close())
 
     @close.after
     def close(self):
         yield from self._send.close()
-
-    def __spawn__(self, *args, **kws):
-        #proc = mp.Process(target=self.__proc__, args=args, kwargs=kws)
-        #proc.start()
-        #return proc.pid
-        return fork.spawn(self, *args, **kws)
-
-class Forker:
-    def setup(self):
-        self.rq = mp.Queue()
-        self.pids = mp.Queue()
-        self.proc = mp.Process(target=self.__proc__)
-        self.proc.start()
-        
-    def __proc__(self):
-        rq,pids = self.rq, self.pids
-        for target, args, kws in iter(rq.get, None):
-            proc = mp.Process(target=target.__proc__, args=args, kwargs=kws)
-            proc.start()
-            pids.put(proc.pid)
-
-    def spawn(self, target, *args, **kws):
-        self.rq.put((target, args, kws))
-        return self.pids.get()
-
-fork = None
