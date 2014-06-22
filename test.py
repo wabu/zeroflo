@@ -1,61 +1,59 @@
 import logging
 
-
-from datalibs.util import delayed
-from zeroflo.flo import *
-from zeroflo.zeroflow import *
-
+import zeroflo as flo
 import os
 
-class Range(Unit):
-    @outport
+class Range(flo.Unit):
+    @flo.outport
     def outs(i : int, tag : {'n': int}):
         """"""
 
-    @inport
+    @flo.inport
     def range(self, n : int, tag : {}):
         for i in range(n):
             yield from i >> tag.add(n=n) >> self.outs
         
 
-class Cumulate(Unit):
-    @delayed
+class Cumulate(flo.Unit):
+    @flo.local
     def current(self):
         return 0
 
-    @outport
+    @flo.outport
     def cums(c : int, tag : {}):
         """"""
 
-    @inport
+    @flo.inport
     def ins(self, k : int, tag : {}):
         self.current += k
         yield from self.current >> tag >> self.cums
 
 
-class Print(Unit):
-    @inport
+class Print(flo.Unit):
+    @flo.inport
     def print(self, o : ..., tag : {}):
         print('>>', os.getpid(), o)
 
 
+def setup_logging():
+    logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
+    logging.getLogger('zeroflo').setLevel("DEBUG")
+
 if __name__ == "__main__":
-    logging.basicConfig(format='[%(process)d] %(levelname)s %(message)s')
+    with flo.context('testflo', setup=setup_logging) as ctx:
 
-    logger = logging.getLogger('zeroflo')
-    logger.setLevel("DEBUG")
-    #logger.addHandler(logging.StreamHandler())
+        # create flow units
+        rng = Range()
+        cum = Cumulate()
+        prt = Print()
 
-    rng = Range()
-    cum = Cumulate()
-    prt = Print()
+        # connect flow units
+        rng.outs >> cum.ins
+        cum.cums >> prt.print
 
-    rng | cum | prt
+        # specify distribution of units
+        rng | cum & prt
 
-    rng.outs >> cum.ins
-    cum.cums >> prt.print
-
-    #flow = rng | prt
-    #rng.outs >> prt.print
-
+    # simple call to trigger flow
     rng.range(10)
+
