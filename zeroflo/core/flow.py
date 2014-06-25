@@ -1,21 +1,26 @@
+from .annotate import *
 from .util import *
 from . import sugar
 from . import context
 from . import zmqtools
+from . import forkbug
 
 import os
 import weakref
 import asyncio
 import aiozmq
+import multiprocessing as mp
+import atexit
 from collections import namedtuple, defaultdict
 
 import logging
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
 coroutine = asyncio.coroutine
 
-class Context(Fled):
+class Context(Spaced):
     __name__ = 'flo'
     __master__ = True
 
@@ -24,6 +29,8 @@ class Context(Fled):
         self.setups = []
         if setup:
             self.setups.append(setup)
+
+        atexit.register(self.cleanup)
 
     def setup(self):
         for setup in self.setups:
@@ -44,6 +51,10 @@ class Context(Fled):
 
     def path(self, *args):
         return os.path.join(self.extend, *map(str, args))
+
+    def cleanup(self):
+        if self.id.master:
+            os.system("rm -rf '%s'" % self.__namespace__)
 
 
 class Topology:
@@ -180,8 +191,9 @@ class Topology:
         return links
 
 
-class Space(Fled):
+class Space(Spaced):
     __name__ = 'space'
+    __by__ = ['ctx']
     def __init__(self, fids, ctx, name=None):
         super().__init__(name=name)
         self.ctx = ctx
@@ -222,21 +234,28 @@ class Space(Fled):
     @coroutine
     def dispatch(self, chan):
         top = self.ctx.top
+        pull = chan.pull
+        done = chan.done
         ports = {}
 
         logger.debug('SPC:dispatch %s [%r/%r]', chan, self.ctx, self)
         while True:
-            pid, packet = yield from chan.pull()
+            pid,packet = yield from pull() 
             try:
                 port = ports[pid]
             except KeyError:
                 port = pid.lookup(self.ctx)
                 ports[pid] = port
 
-            yield from port.handle(packet)
+            with forkbug.maybug(self.id.long, namespace=self.__namespace__):
+                yield from port.handle(packet)
+
+            yield from done()
+
 
     @coroutine
     def setup(self):
+        self.local = True
         self.ctx.setup()
 
         ctrl = self.ctx.ctrl
@@ -250,11 +269,15 @@ class Space(Fled):
             tasks.append(ctrl.resolve_out(link))
 
         logger.info('SPC!resolve %d channels [%r/%r]', len(tasks), self.ctx, self)
-        return (yield from asyncio.gather(*tasks, loop=self.ctx.loop))
+        futures = (yield from asyncio.gather(*tasks, loop=self.ctx.loop))
+        return list(filter(bool, futures))
 
     def __entry__(self):
-        asyncio.async(self.setup(), loop=self.ctx.loop)
-        self.ctx.loop.run_forever()
+        @coroutine
+        def waiting():
+            loops = yield from self.setup()
+            yield from asyncio.wait(loops)
+        self.ctx.loop.run_until_complete(waiting())
 
     def __str__(self):
         return '{}{{{}}}'.format(super().__str__(),
@@ -269,6 +292,11 @@ class Pid(namedtuple("Pid", "fid, port")):
     def lookup(self, ctx):
         fl = ctx.top.lookup(self.fid)
         return getattr(fl.unit, self.port)
+
+    def __str__(self):
+        return '{}.{}'.format(self.fid.long, self.port)
+
+    __repr__ = __str__
 
 
 class Link:
@@ -295,10 +323,6 @@ class Link:
         return sync
 
     @local
-    def address(self):
-        return tuple(s.long for s in self.sync)
-
-    @local
     def channel(self):
         return None
 
@@ -311,6 +335,20 @@ class Link:
         logger.debug('LNK.handle %s [%r/%s]', packet, self.ctx, self)
         yield from self.channel.push(self.tgt,  packet)
         logger.debug('LNK#pushed to %s [%r/%s]', self.channel, self.ctx, self)
+
+    @coroutine
+    def flush(self):
+        if self.channel:
+            logger.debug('LNK:flush [%r/%s]', self.ctx, self)
+            yield from self.channel.flush()
+        else:
+            logger.debug('LNK:flush channel inactive [%r/%s]', self.ctx, self)
+
+    @local
+    def __namespace__(self):
+        space = '/'.join(s.long for s in self.sync)
+        os.system("mkdir -p '%s'" % space)
+        return space
 
     def __str__(self):
         return '%s >> %s' % (self.source, self.target)
@@ -331,7 +369,8 @@ class Unit(sugar.UnitSugar):
         return repr(self.__fl__)
 
 
-class Fl(Fled):
+class Fl(Spaced):
+    __by__ = ['space']
     def __init__(self, unit, *, name=None, ctx=None):
         super().__init__(name=name or type(unit).__name__)
 
@@ -366,6 +405,18 @@ class Fl(Fled):
     @property
     def outports(self):
         return [p for p in self.ports if isinstance(p, OutPort)]
+
+    @coroutine
+    def flush(self):
+        logger.debug('FLO:flush [%r/%r]', self.ctx, self)
+        flushs = []
+        for out in self.outports:
+            for link in out.links:
+                flushs.append(link.flush())
+
+        logger.debug('FLO!flush %d links [%r/%r]', len(flushs), self.ctx, self)
+        yield from asyncio.gather(*flushs)
+        logger.info('FLO!flushed [%r/%r]', self.ctx, self)
 
 
 class Packet(namedtuple('Packet', 'data tag')):
@@ -457,21 +508,12 @@ class Syncs:
         return cls.unit(port) + (port.id,)
 
 
-class Unbound(Annotate, RefDescr, Get):
+class Unbound(Conotate, RefDescr, Get):
     __port__ = None
     __sync__ = Syncs.unit, Syncs.any
 
-    def __get__(self, obj, objtype):
-        if obj is None:
-            return self
-
-        dct,key = self.lookup(obj)
-        try:
-            return dct[key]
-        except KeyError:
-            port = self.__port__(obj, self.definition, self.__sync__)
-            dct[key] = port
-            return port
+    def __default__(self, obj):
+        return self.__port__(obj, self.definition, self.__sync__)
 
 
 def sync(target='unit', source='any'):
@@ -503,6 +545,8 @@ def sync(target='unit', source='any'):
         return inport
     return set_sync
 
+async = sync(target='port')
+
 
 class Port:
     def __init__(self, unit, definition, sync):
@@ -511,12 +555,16 @@ class Port:
         self.name = definition.__name__
         self.id = Sym(self.name)
         self.pid = Pid(self.fl.id, self.name)
-        self._definition = coroutine(definition)
+        self._definition = definition
         self.sync = sync
 
     @local
     def definition(self):
         return self._definition.__get__(self.fl.unit)
+
+    @property
+    def __namespace__(self):
+        return '/'.join([self.fl.__namespace, self.name])
 
     def __str__(self):
         return '@%s:%s.%s' % (self.kind, self.fl, self.name)
@@ -524,14 +572,6 @@ class Port:
     def __repr__(self):
         ind = {'in': '<<', 'out': '>>'}[self.kind]
         return '%s %s[%s]' % (self, ind, ', '.join(map(str, self.links)))
-
-
-class InPort(Port):
-    kind = 'in'
-
-    @local
-    def links(self):
-        return self.fl.ctx.top.links_to(self.pid)
 
     def __call__(self, data=None, tag=None, **kws):
         if tag and kws:
@@ -544,30 +584,41 @@ class InPort(Port):
         packet = data >> tag
 
         if self.fl.ctx.loop.is_running():
-            # call from inside flow loop
-            logger.debug('INS:call/inside %s [%r/%s]', packet, self.ctx, self)
+            # call from inside loop
+            logger.debug('IPT:call/inside %s [%r/%s]', packet, self.ctx, self)
             return self.handle(packet)
-        elif True:
-            logger.info('INS:call/outside %s [%r/%s]', packet, self.ctx, self)
-            # local startup from outside of loop
+
+        elif (not self.fl.space.is_setup) or self.fl.space.local:
+            # call from outside, but can be localized
+            logger.info('IPT:call/outside %s [%r/%s]', packet, self.ctx, self)
             self.fl.space.local = True
             @coroutine
             def handler():
-                logger.debug('INS>setup %s [%r/%s]', packet, self.ctx, self)
+                logger.debug('IPT>setup %s [%r/%s]', packet, self.ctx, self)
                 yield from self.ctx.ctrl.setup()
                 yield from self.handle(packet)
-            logger.debug('INS!run %s [%r/%s]', packet, self.ctx, self)
+                yield from self.fl.flush()
+            logger.debug('IPT!run %s [%r/%s]', packet, self.ctx, self)
             self.ctx.loop.run_until_complete(handler())
-            logger.debug('INS!done %s [%r/%s]', packet, self.ctx, self)
+            logger.debug('IPT!done %s [%r/%s]', packet, self.ctx, self)
         else:
             # TODO: check if space already running
             # XXX: perhaps always use trigger unit
-            raise NotImplementedError
+            raise NotImplementedError("currently can't call remotes space, use trigger units instead")
+
+
+class InPort(Port):
+    kind = 'in'
+
+    @local
+    def links(self):
+        return self.fl.ctx.top.links_to(self.pid)
 
     @coroutine
     def handle(self, packet):
-        logger.debug('INS:handle %s [%r/%s]', packet, self.ctx, self)
+        logger.debug('IPT:handle %s [%r/%s]', packet, self.ctx, self)
         yield from self.definition(*packet)
+
 
 
 class OutPort(Port, sugar.OutSugar):
@@ -581,9 +632,10 @@ class OutPort(Port, sugar.OutSugar):
     def handle(self, packet):
         if not isinstance(packet, Packet):
             packet = packet >> Tag()
-        logger.debug('OUT:handle %s >> %s [%r/%s]', packet, self.links, self.ctx, self)
+        logger.debug('OPT:handle %s >> %s [%r/%s]', packet, self.links, self.ctx, self)
         yield from asyncio.gather(*[l.handle(packet) for l in self.links], 
                 loop=self.ctx.loop)
+
 
 class inport(Unbound):
     """annotation for inport definitions"""
@@ -623,10 +675,14 @@ class Control():
         return resolve
             
     @resolver
-    def resolve_out(self, conn, link):
+    def get_out(self, conn, link):
         logger.debug('CTX.resolve-out %s by %s [%r]', link, conn, self.ctx)
-        chan = yield from conn.mk_out(link)
-        return link.register(chan)
+        return (yield from conn.mk_out(link))
+
+    @coroutine
+    def resolve_out(self, link):
+        chan = yield from self.get_out(link)
+        link.register(chan)
         
     @resolver
     def resolve_in(self, conn, link):
@@ -635,13 +691,17 @@ class Control():
         return link.target.fl.space.register(chan)
 
     @local
-    def spawner(self):
-        from . import spawn
-        return spawn.MPSpawner()
+    def mp(self):
+        return mp.get_context('spawn')
+
+    @coroutine
+    def spawn(self, space):
+        logger.info('CTX.spawn %s [%r]', space, self.ctx)
+        proc = self.mp.Process(target=call_entry, args=(space,), name=space.id.long)
+        proc.start()
 
     @coroutine
     def setup(self):
-        spawner = None
         tasks = []
         for space in self.ctx.top.spaces:
             if space.is_setup:
@@ -651,19 +711,21 @@ class Control():
                 tasks.append(space.setup())
             else:
                 logger.info('CTX.setup spawn %s [%r]', space, self.ctx)
-                tasks.append(self.spawner.spawn(space))
+                tasks.append(self.spawn(space))
             space.is_setup = True
 
         logger.info('CTX.setup %d spaces [%r]', len(tasks), self.ctx)
         yield from asyncio.gather(*tasks, loop=self.ctx.loop)
 
-class LocalCtrl:
-    def __init__(self, ctx):
-        self.ctx = ctx
-
-    @coroutine
-    def open_link(self, link):
-        yield from self.ctx.ctrl.resolve_in(link)
+def call_entry(proc, *args, **kws):
+    logger.info('spawned %s', proc)
+    try:
+        logger.debug('spawn calling %s', proc)
+        proc.__entry__(*args, **kws)
+        logger.debug('spawn finsihed %s', proc)
+    except Exception as e:
+        logger.error('spawn execpt %s', proc, exc_info=True)
+        raise
 
 
 def connector(cls):
@@ -677,41 +739,54 @@ class LocalConnector:
 
     def get_q(self, link):
         try:
-            q = self.queues[link.address]
+            q = self.queues[link.__namespace__]
             return q
         except KeyError:
-            q = asyncio.Queue(10)
-            self.queues[link.address] = q
+            q = asyncio.JoinableQueue(10)
+            self.queues[link.__namespace__] = q
             return q
 
     @coroutine
     def mk_out(self, link):
         logger.debug('LCL.mk-out %s', link)
-        return LocalOut(self.get_q(link))
+        return LocalOut(self.get_q(link), namespace=link.__namespace__)
 
     @coroutine
     def mk_in(self, link):
         logger.debug('LCL.mk-in %s', link)
-        return LocalIn(self.get_q(link))
+        return LocalIn(self.get_q(link), namespace=link.__namespace__)
 
-class LocalOut:
-    def __init__(self, q):
+class InheritName:
+    def __init__(self, namespace):
+        self.__namespace__ = namespace
+
+class LocalOut(InheritName):
+    def __init__(self, q, **kws):
+        super().__init__(**kws)
         self.q = q
 
     @coroutine
     def push(self, pid, packet):
-        logger.debug('LCO:push %s >> %s', packet, pid)
+        logger.debug('LCO:push %s >> %s (%s)', packet, pid, self.__namespace__)
         yield from self.q.put((pid, packet)) 
 
-class LocalIn:
-    def __init__(self, q):
+    @coroutine
+    def flush(self):
+        logger.debug('LCO:flush (%s)', self.__namespace__)
+        yield from self.q.join()
+
+class LocalIn(InheritName):
+    def __init__(self, q, **kws):
+        super().__init__(**kws)
         self.q = q
 
     @coroutine
     def pull(self):
-        pid,packet = yield from self.q.get()
-        logger.debug('LCI:pull %s << %s', pid, packet)
-        return pid,packet
+        return (yield from self.q.get())
+
+    @coroutine
+    def done(self):
+        self.q.task_done()
 
 
 @connector
@@ -719,33 +794,68 @@ class ZmqConnector:
     kind = 'dist'
     @coroutine
     def mk_out(self, link):
-        out = ZmqOut()
-        yield from out.setup('ipc://{}/chan'.format('/'.join(link.address)))
+        out = ZmqOut(namespace=link.__namespace__)
+        yield from out.setup('ipc://{}/chan'.format(link.__namespace__))
         return out
 
     @coroutine
     def mk_in(self, link):
-        ins = ZmqIn()
-        yield from ins.setup('ipc://{}/chan'.format('/'.join(link.address)))
+        ins = ZmqIn(namespace=link.__namespace__)
+        yield from ins.setup('ipc://{}/chan'.format(link.__namespace__))
         return ins
 
-class ZmqOut:
+class ZmqOut(InheritName):
     @coroutine
     def setup(self, address):
-        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, connect=address)
+        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, 
+                connect=address)
+        self.done = asyncio.Event()
+        self.done.set()
+        self.count = 0
+        return asyncio.async(self.loop())
 
     @coroutine
     def push(self, pid, packet):
-        yield from self.stream.push((pid, packet))
+        if self.count == 0:
+            self.done.clear()
+        self.count += 1
+        yield from self.stream.push(pid, packet)
+
+    @coroutine
+    def loop(self):
+            stream = self.stream
+            done = self.done
+            while True:
+                logger.debug('ZMO:loop count=%d (%s)', self.count, self.__namespace__)
+                nil = yield from self.stream.read()
+                logger.debug('ZMO:loop got %s (%s)', nil, self.__namespace__)
+                self.count -= 1
+                assert self.count >= 0, "task count should be >=0"
+                if self.count == 0:
+                    logger.debug('ZMO:loop done (%s)', self.__namespace__)
+                    done.set()
+
+    @coroutine
+    def flush(self):
+        logger.debug('ZMO:flush (%s)', self.__namespace__)
+        yield from self.done.wait()
+
     
-class ZmqIn:
+class ZmqIn(InheritName):
     @coroutine
     def setup(self, address):
-        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, bind=address)
+        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.ROUTER, 
+                bind=address)
 
     @coroutine
     def pull(self):
-        return (yield from self.stream.pull())
+        self.done, pid, packet = yield from self.stream.pull(skip=1)
+        logger.debug('ZMI:pull %s<<%s [%s] (%s)', pid, packet, self.done, 
+                     self.__namespace__)
+        return pid, packet
 
-
+    @coroutine
+    def done(self):
+        logger.debug('ZMI:done [%s] (%s)', self.done, self.__namespace__)
+        return (yield from self.stream.write(self.done, b''))
 

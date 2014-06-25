@@ -27,12 +27,8 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     """
     if bind:
         info = (zmq_type, 'bind', bind)
-        if bind.startswith('ipc://'):
-            os.system("mkdir -p '%s'" % '/'.join(bind[6:].split('/')[:-1]))
     elif connect:
         info = (zmq_type, 'connect', connect)
-        if connect.startswith('ipc://'):
-            os.system("mkdir -p '%s'" % '/'.join(connect[6:].split('/')[:-1]))
     else:
         info = (zmq_type, 'socket','')
 
@@ -129,7 +125,8 @@ class ZmqStream:
     def push(self, *datas, skip=0):
         """push pickled objects on the socket"""
         if skip:
-            yield from self.write(list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]])
+            yield from self.write(*(
+                        list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]]))
         else:
             yield from self.write(*[pickle.dumps(d) for d in datas[skip:]])
 

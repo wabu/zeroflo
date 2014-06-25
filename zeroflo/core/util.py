@@ -3,7 +3,9 @@ from collections import namedtuple
 import weakref
 import os
 
-class FlId(namedtuple('FlId', 'name, long, id')):
+from .annotate import local
+
+class FlId(namedtuple('FlId', 'name, long, id, pid')):
     """ flow identity for an object """
     def __eq__(self, other):
         if not isinstance(other, FlId):
@@ -13,6 +15,10 @@ class FlId(namedtuple('FlId', 'name, long, id')):
     def __hash__(self):
         return hash(self.id)
 
+    @property
+    def master(self):
+        return self.pid == os.getpid()
+
     def __str__(self):
         return '*'+self.name
 
@@ -21,6 +27,7 @@ class FlId(namedtuple('FlId', 'name, long, id')):
 
 
 class Sym(str):
+    """ simple string symbol with same interface as FlId """
     @property
     def id(self):
         return id(self)
@@ -49,7 +56,7 @@ class Fled:
             name = type(self).__name__
         long = '{}-{}'.format(name, id_)
 
-        self.id = FlId(name, long, id(self))
+        self.id = FlId(name, long, id(self), os.getpid())
 
     def __str__(self):
         return str(self.id)[1:]
@@ -58,81 +65,21 @@ class Fled:
         return repr(self.id)[1:]
 
 
-class Named:
-    def __init__(self, name):
-        self.name = name
+class Spaced(Fled):
+    """ object with a combound namespace """
+    __by__ = []
 
-class Annotate(Named):
-    def __new__(cls, definition):
-        return wraps(definition)(super().__new__(cls))
+    @local
+    def __namespace__(self):
+        space = '/'.join([getattr(self,by).__namespace__ for by in self.__by__] + [self.id.long])
+        os.system("mkdir -p '%s'" % space)
+        return space
 
-    def __init__(self, definition):
-        super().__init__(name=definition.__name__)
-        self.definition = definition
-
-class Descr(Named):
-    def lookup():
-        raise NotImplementedError
-
-class ObjDescr(Descr):
-    def __init__(self, name):
-        super().__init__(name=name)
-        self.entry = '_'+name
-
-    def lookup(self, obj):
-        return obj.__dict__, self.entry
-
-class RefDescr(Descr):
-    def __init__(self, name):
-        super().__init__(name)
-        self.refs = weakref.WeakKeyDictionary()
-
-    def lookup(self, obj):
-        return self.refs, obj
-
-class Get(Descr):
-    def __get__(self, obj, objtype):
-        if obj:
-            dct,key = self.lookup(obj)
-            return dct[key]
-        else:
-            return self
-
-class Set(Descr):
-    def __set__(self, obj, value):
-        if obj:
-            dct,key = self.lookup(obj)
-            dct[key] = value
-            return value
-        else:
-            return self
-
-    def __delete__(self, obj):
-        dct,key = self.lookup(obj)
-        dct.pop(key, None)
-
-
-class Cached(Descr):
-    def __get__(self, obj, objtype):
-        if obj is None:
-            return self
-        dct,key = self.lookup(obj)
-        try:
-            return dct[key]
-        except KeyError:
-            value = self.definition(obj)
-            dct[key] = value
-            return value
-
-
-class shared(Annotate, Cached, ObjDescr, Get):
-    pass
-
-class local(Annotate, Cached, RefDescr, Set, Get):
-    pass 
 
 def ctxmethod(f):
     @wraps(f)
     def insert_ctx(self, *args, **kws):
         return f(self, *args, ctx=self.__fl__.ctx, **kws)
     return insert_ctx
+
+

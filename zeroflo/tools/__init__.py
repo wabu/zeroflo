@@ -1,1 +1,2 @@
-from . import combine, bundle, params
+from .combine import combine
+from . import bundle, params
