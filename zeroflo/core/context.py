@@ -9,9 +9,18 @@ def get_current_context():
                 "flow units or pass a ctx to the unit constructor.")
     return _ctx
 
+def get_object_context(obj):
+    try:
+        return obj.__ctx__
+    except AttributeError:
+        ctx = get_current_context()
+        obj.__ctx__ = ctx
+        return ctx
+
+
 @contextmanager
 def context(ctx=None, *args, **kws):
-    from .flow import Context
+    from .topology import Context
     global _ctx
 
     old = _ctx

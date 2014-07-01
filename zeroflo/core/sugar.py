@@ -21,25 +21,25 @@ class UnitSugar:
     @ctxmethod
     def __and__(self, other, ctx):
         """ `fl1 & fl2` -> `ctx.top.unify(fl1, fl2)` """
-        if hasattr(other, '__fl__'):
-            ctx.top.unify(self.__fl__, other.__fl__)
-            return Union(ctx, self.__fl__, other.__fl__)
+        if hasattr(other, '__unit__'):
+            ctx.top.unify(self.__unit__, other.__unit__)
+            return Union(ctx, self.__unit__, other.__unit__)
         else:
             return NotImplemented
 
     @ctxmethod
     def __or__(self, other, ctx):
         """ `fl1 | fl2` -> `ctx.distribute(fl1, fl2)` """
-        if hasattr(other, '__fl__'):
-            ctx.top.distribute(self.__fl__, other.__fl__)
-            return Distr(ctx, self.__fl__, other.__fl__)
+        if hasattr(other, '__unit__'):
+            ctx.top.distribute(self.__unit__, other.__unit__)
+            return Distr(ctx, self.__unit__, other.__unit__)
         else:
             return NotImplemented
 
 class OutSugar:
     def __rshift__(self, target):
         """ `data >> tag` -> `Packet(data, tag)` """
-        self.fl.ctx.top.link(self, target)
+        self.unit.ctx.top.link(self, target)
 
     @coroutine
     def __rrshift__(self, packet):
@@ -50,8 +50,8 @@ class OutSugar:
 def locop(f):
     @wraps(f)
     def locy(self, other):
-        if hasattr(other, '__fl__'):
-            other = Loc(self.ctx, other.__fl__)
+        if hasattr(other, '__unit__'):
+            other = Loc(self.ctx, other.__unit__)
         if not isinstance(other, Loc):
             return NotImplemented
         return f(self, other)

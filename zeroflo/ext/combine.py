@@ -25,7 +25,7 @@ import inspect
 import asyncio
 from asyncio import coroutine
 from functools import wraps
-from ..core.flow import Tag
+from ..core.exec import Tag
 from ..core.annotate import Annotate, ObjDescr, Get
 
 import logging

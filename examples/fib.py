@@ -30,7 +30,7 @@ The distribute into different process spaces is arbitrary,
 but shows how easy it es to setup distributed flows.
 """
 
-class Lag(flo.Unit):
+class Lag(flo.Flo):
     def __init__(self, *args, **kws):
         super().__init__(*args, **kws)
         self.setup = False
@@ -48,7 +48,7 @@ class Lag(flo.Unit):
         self.last = i
 
 
-class Add(flo.Unit):
+class Add(flo.Flo):
     @flo.outport
     def out(i, tag): pass
 
@@ -67,7 +67,7 @@ class Add(flo.Unit):
         yield from self.add(b=b, tag=tag)
 
 
-class Print(flo.Unit):
+class Print(flo.Flo):
     @flo.inport
     def ins(self, o, tag):
         print('>>', o)
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         add.out >> prt.ins
 
         # specifiy distribution
-        add | lag & prt
+        add & lag & prt
 
     # simple call to trigger flow
     add.out(0)

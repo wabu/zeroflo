@@ -1,7 +1,7 @@
 from contextlib import contextmanager
-import logging
 import os
 
+import logging
 logger = logging.getLogger(__name__)
 
 fork_debug = True
