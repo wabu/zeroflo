@@ -66,6 +66,10 @@ class Tag(dict):
         new.update(kws)
         return new
 
+    @classmethod
+    def new(cls, **kws):
+        return cls(kws)
+
     def __rrshift__(self, data):
         return Packet(data, self)
 
@@ -127,13 +131,18 @@ class Executor:
     def setup(self):
         logger.info('EXC.setup')
         starts = []
+        local = []
         for space in self.top.spaces:
-            if space.local:
-                starts.append(self.setup_space(space))
+            if space.is_setup:
+                continue
+            if space.is_local:
+                local.append(self.setup_space(space))
             else:
                 starts.append(self.spawn_space(space))
 
         yield from gather(*starts)
+
+        yield from gather(*local)
 
     @local
     def mp(self):
@@ -141,12 +150,20 @@ class Executor:
 
     @coroutine
     def spawn_space(self, space):
-        proc = self.mp.Process(target=caller, args=('__entry__', self,space), 
+        logger.debug('EXC.spawn-space %r [%r]', space, self.ctx)
+        proc = self.mp.Process(target=caller, args=('__entry__', self, space), 
                                name=space.id.long)
+        logger.debug('EXC.spawn-proc %r: %r [%r]', space, proc, self.ctx)
         proc.start()
+        logger.debug('EXC.spawn-done %r: %d [%r]', space, proc.pid, self.ctx)
+        space.is_setup = True
 
     def __entry__(self, space):
+        #print(self, sid)
+        #space = self.ctx.top.get_space(sid)
+        #with forkbug.maybug(space.path):
         self.ctx.setup()
+        logger.info('EXC.spawn-entry %r [%r]', space, self.ctx)
         @coroutine
         def waiting():
             loops = yield from self.setup_space(space)
@@ -155,19 +172,17 @@ class Executor:
 
     @coroutine
     def setup_space(self, space):
-        if space.is_setup:
-            return
         logger.debug('EXC.setup-space %r [%r]', space, self.ctx)
-        space.local = True
+        space.is_local = True
         # XXX call config setup function here
 
         tasks = []
         for link in space.incomming:
-            logger.debug('EXC+setup-in %s [%r/%r]', link, self.ctx, space)
+            logger.debug('EXC+setup-in %r [%r/%r]', link, self.ctx, space)
             tasks.append(self.setup_in(link))
 
         for link in space.outgoing:
-            logger.debug('EXC+setup-out %s [%r/%r]', link, self.ctx, space)
+            logger.debug('EXC+setup-out %r [%r/%r]', link, self.ctx, space)
             tasks.append(self.setup_out(link))
 
         futures = (yield from gather(*tasks, loop=self.ctx.loop))
@@ -180,7 +195,8 @@ class Executor:
         chan = self.resolve_out(link)
         up = yield from chan.setup()
 
-        self.out_chans[link.src].append((link.tgt, chan))
+        self.out_chans[link.source.id].append((link.target.id, chan))
+        logger.debug('EXC.setup-out %r -> %s [%r@%x]', link, self.out_chans, self.ctx, id(self))
         return up
 
     @local
@@ -191,7 +207,7 @@ class Executor:
     @coroutine
     def handle(self, src, packet):
         chans = self.out_chans[src]
-        logger.debug('EXC.handle pushes %d [%r]', len(chans), self.ctx)
+        logger.debug('EXC.handle pushes %d (%r | %s) [%r@%x]', len(chans), src, self.out_chans, self.ctx, id(self))
         yield from gather(*[chan.push(tgt, packet) for tgt, chan in chans])
 
     @coroutine
@@ -212,7 +228,7 @@ class Executor:
         return self.register_in(chan)
 
     def register_in(self, chan):
-        logger.info('SPC:register %s [%r/%r]', chan, self.ctx, self)
+        logger.info('EXC:register %s [%r]', chan, self.ctx)
         return async(self.dispatch(chan), loop=self.ctx.loop)
 
     @coroutine
@@ -221,7 +237,7 @@ class Executor:
         done = chan.done
         hdls = {}
 
-        logger.debug('SPC:dispatch %s [%r/%r]', chan, self.ctx, self)
+        logger.debug('EXC:dispatch %s [%r]', chan, self.ctx)
         while True:
             pid,packet = yield from pull()
             try:

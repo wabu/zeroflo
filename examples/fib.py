@@ -98,7 +98,7 @@ if __name__ == "__main__":
         add.out >> prt.ins
 
         # specifiy distribution
-        add & lag & prt
+        add | lag & prt
 
     # simple call to trigger flow
     add.out(0)

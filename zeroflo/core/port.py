@@ -49,8 +49,9 @@ def sync(target='port', source='any'):
     ... def ins(self, data, tag):
     ...     yield from data >> tag >> self.out
     """
-    sync = Sync(getattr(Syncs, target),
-                getattr(Syncs, source))
+    getattr(Syncs, target)
+    getattr(Syncs, source)
+    sync = Sync(target, source)
     def set_sync(inport):
         inport.__sync__ = sync
         return inport
@@ -63,18 +64,27 @@ class Port(IddPath):
     """ port base """
     __by__ = ['unit', 'name']
 
-    def __init__(self, definition, ctx, unit, sync=None, **kws):
-        super().__init__(**kws)
+    def __init__(self, ctx, unit, name, sync=None, **kws):
+        super().__init__(id_=Derived(unit.id, name), **kws)
+
         self.ctx = ctx
-        self.exec = ctx.exec if ctx else None
-        self.sync = sync or Sync(default, any)
-        self.definition = definition
+        self.__sync__ = sync or Sync('default', 'any')
         self.unit = unit
+        self.name = name
 
-        if ctx is None:
-            logger.warning('PRT:init %s has no context', self)
+    @local
+    def sync(self):
+        tgt, src = self.__sync__
+        return Sync(getattr(Syncs, tgt), getattr(Syncs, src))
 
-    def __call__(self, data=None, tag=None, **kws):
+    @local
+    def definition(self):
+        obj = self.unit.ref
+        return getattr(type(obj), self.name).definition.__get__(obj)
+
+    def trigger(self, data=None, tag=None, **kws):
+        self.unit.space.is_local = True
+
         if tag and kws:
             tag = tag.add(**kws)
         elif kws:
@@ -84,25 +94,23 @@ class Port(IddPath):
 
         packet = data >> tag
 
+        logger.debug('PRT>call/setup %s [%r/%s]', packet, self.ctx, self)
+        yield from self.ctx.exec.setup()
+        logger.debug('PRT>call/handle %s [%r/%s]', packet, self.ctx, self)
+        yield from self.handle(packet)
+        logger.debug('PRT>call/flush %s [%r/%s]', packet, self.ctx, self)
+        yield from self.ctx.exec.flush()
+
+    def __call__(self, data=None, tag=None, **kws):
         if self.ctx.loop.is_running():
             # call from inside loop
-            logger.debug('PRT:call/inside %s [%r/%s]', packet, self.ctx, self)
-            return self.handle(packet)
-        elif (not self.unit.space.is_setup) or self.unit.space.local:
+            logger.debug('PRT:call/inside [%r/%s]', self.ctx, self)
+            return self.handle(data, tag)
+        elif (not self.unit.space.is_setup) or self.unit.space.is_local:
             # call from outside, but can be localized
-            logger.info('PRT:call/outside %s [%r/%s]', packet, self.ctx, self)
-            self.unit.space.local = True
-            @coroutine
-            def caller():
-                logger.debug('PRT>call/setup %s [%r/%s]', packet, self.ctx, self)
-                yield from self.ctx.exec.setup()
-                logger.debug('PRT>call/handle %s [%r/%s]', packet, self.ctx, self)
-                yield from self.handle(packet)
-                logger.debug('PRT>call/flush %s [%r/%s]', packet, self.ctx, self)
-                yield from self.ctx.exec.flush()
-            logger.debug('PRT!run %s [%r/%s]', packet, self.ctx, self)
-            self.ctx.loop.run_until_complete(caller())
-            logger.debug('PRT!done %s [%r/%s]', packet, self.ctx, self)
+            logger.info('PRT:call/outside [%r/%s]', self.ctx, self)
+            self.ctx.loop.run_until_complete(self.trigger(data=data, tag=tag, **kws))
+            logger.debug('PRT:call/done [%r/%s]', self.ctx, self)
         else:
             raise NotImplementedError("currently can't call remotes space, "
                                       "use trigger units instead")
@@ -114,7 +122,7 @@ class InPort(Port):
 
     @coroutine
     def handle(self, packet):
-        logger.debug('IPT.handle %s', packet)
+        logger.debug('IPT.handle %s [%r/%r]', packet, self.ctx, self)
         yield from self.definition(*packet)
 
 
@@ -125,24 +133,17 @@ class OutPort(Port, sugar.OutSugar):
 
     @coroutine
     def handle(self, packet):
-        exec = self.exec
-        if exec:
-            yield from exec.handle(self.id, packet)
+        yield from self.ctx.exec.handle(self.id, packet)
 
 
 class UnboundPort(Conotate, local):
     __port__ = Port
-    __sync__ = Sync(Syncs.port, Syncs.any)
+    __sync__ = Sync('port', 'any')
     def __default__(self, obj):
-        ctx = context.get_object_context(obj)
-        unit = ctx.top.get_unit(obj)
-
-        return self.__port__(definition=self.definition.__get__(obj),
-                             ctx=ctx,
-                             sync=self.__sync__, 
-                             unit=unit, 
+        return self.__port__(ctx=obj.__ctx__,
+                             unit=obj.__unit__, 
                              name=self.name,
-                             id_=Derived(unit.id, self.name))
+                             sync=self.__sync__)
 
 class inport(UnboundPort):
     __port__ = InPort

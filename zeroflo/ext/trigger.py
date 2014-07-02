@@ -1,15 +1,14 @@
-from .flow import *
+from ..core import *
 
 import logging
-logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
-logging.getLogger('zeroflo').setLevel("INFO")
 
-class Trigger(Unit):
+logger = logging.getLogger(__name__)
+
+class Trigger(Flo):
     @outport
-    def out(): pass
+    def trig(): pass
 
     @inport
     def once(self, data, tag):
-        yield from data >> tag >> self.out
-
-    __call__ = once
+        logger.debug('triggering %s once with %s', self, data >> tag)
+        yield from data >> tag >> self.trig

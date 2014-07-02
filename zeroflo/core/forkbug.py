@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import os
+import asyncio
 
 import logging
 logger = logging.getLogger(__name__)
@@ -8,19 +9,22 @@ fork_debug = True
 
 def fork_debugger(namespace=None):
     logger.warn('forking with ipython kernel for debugging ...')
-    pid = os.fork()
+    #pid = os.fork()
+    pid = 0
     if not pid:
         try:
-            from IPython import embed_kernel, get_ipython, Config, config
+            from IPython import embed_kernel, get_ipython, Config, config, terminal
             from IPython.kernel.zmq import kernelapp
             curr = get_ipython()
             if curr:
-                for cls in type(curr).mro():
+                logger.warn("there's a current ipython running (%r)", curr)
+                for cls in terminal.interactiveshell.TerminalInteractiveShell.mro():
                     if hasattr(cls, 'clear_instance'):
                         cls.clear_instance()
                 for cls in kernelapp.IPKernelApp.mro():
                     if hasattr(cls, 'clear_instance'):
                         cls.clear_instance()
+
             conf = Config()
             conf.InteractiveShellApp.code_to_run = 'raise'
             if namespace:
@@ -31,7 +35,8 @@ def fork_debugger(namespace=None):
         except Exception as e:
             logger.error('failed to embed ipython: %s', e, exc_info=True)
         finally:
-            os._exit(1)
+            #os._exit(1)
+            pass
     else:
         logger.warn('forked %d for debugging', pid)
 

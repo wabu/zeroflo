@@ -104,7 +104,7 @@ class local(Annotate, Cached, RefDescr, Set, Get):
     """ evaluate locally again """
     pass 
 
-class delayed(Annotate, Cached, ObjDescr, Set, Get):
+class delayed(Annotate, Cached, RefDescr, Set, Get):
     """ evaluate as needed """
     pass
 

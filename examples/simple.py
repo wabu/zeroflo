@@ -12,11 +12,20 @@ class Source(flo.Flo):
     @flo.outport
     def out(): pass
 
+class Process(flo.Flo):
+    @flo.inport
+    def ins(self, data, tag):
+        print(' !', data)
+        yield from data * 2 >> tag.add(doubled=True) >> self.out
+
+    @flo.outport
+    def out(): pass
+
 
 class Sink(flo.Flo):
     @flo.inport
     def ins(self, data, tag):
-        print(data)
+        print('>>', data)
 
 
 def setup_logging():
@@ -31,13 +40,16 @@ if __name__ == "__main__":
     with flo.context('simple', setup=setup_logging) as ctx:
         # create flow units
         src = Source()
+        prc = Process()
         snk = Sink()
 
         # connect flow units
-        src.out >> snk.ins
+        src.out >> prc.ins
+        prc.out >> snk.ins
+
 
         # specifiy distribution
-        src | snk
+        src | prc | snk
 
     # simple call to trigger flow
     src.ins(['one', 'two', 'three'])

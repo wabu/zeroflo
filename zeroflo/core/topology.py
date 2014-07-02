@@ -75,14 +75,19 @@ class Unit(IddPath):
     __ref__ = 'unit'
     __by__ = ['space', ...]
 
-    def __init__(self, ctx, ins, outs, name=None, ref=None):
+    def __init__(self, ins, outs, ctx=None, name=None, ref=None):
         # XXX improve and abstract name inference
         name = name or type(ref).__name__
         super().__init__(name=name)
+
+        if ctx is None:
+            ctx = context.get_current_context()
+
+        self.ctx = ctx
         self.ins = ins
         self.outs = outs
         self.ref = ref
-        self.ctx = ctx
+        ctx.register(self)
 
     @local
     def inports(self):
@@ -94,40 +99,39 @@ class Unit(IddPath):
 
     @local
     def space(self):
-        return self.ctx.top.get_space(self.id)
+        return self.ctx.get_space(self)
 
+class FloUnit(Unit):
+    """ unit based on flow object with @inport and @outport definitions  """
+    def __init__(self, flobj, **kws):
+        ins = [p.name for p in inport.iter(flobj)]
+        outs = [p.name for p in outport.iter(flobj)]
+        super().__init__(ins=ins, outs=outs, ref=flobj, **kws)
 
 class Flo(sugar.UnitSugar):
     def __init__(self, *args, name=None, **kws):
         super().__init__(*args, **kws)
-        self.__ctx__ = context.get_object_context(self)
-        self.__ctx__.register(self)
 
-class FloUnit(Unit):
-    """ unit based on flow object with @inport and @outport definitions  """
-    def __init__(self, flobj, ctx, name=None):
-        ins = [p.name for p in inport.iter(flobj)]
-        outs = [p.name for p in outport.iter(flobj)]
-        super().__init__(ins=ins, outs=outs, ctx=ctx, name=name, ref=flobj)
+        self.__unit__ = FloUnit(self, name=name)
+        self.__ctx__ = self.__unit__.ctx
 
 
 class Space(IddPath):
     __ref__ = 'space'
     __by__ = ['ctx', ...]
 
-    def __init__(self, uids, ctx, name=None):
+    def __init__(self, units, ctx, name=None):
         super().__init__(name=name)
-
         self.ctx = ctx
-        self.uids = uids
+        self.units = units
 
     @shared
     def is_setup(self):
         return False
 
     @local
-    def units(self):
-        return list(map(self.ctx.top.lookup, self.uids))
+    def is_local(self):
+        return False
 
     @local
     def inports(self):
@@ -145,26 +149,14 @@ class Space(IddPath):
     def outgoing(self):
         return {l for ins in self.outports for l in ins.links}
 
-    @local
-    def local(self):
-        return False
-
 
 
 class Link:
-    def __init__(self, ctx, src, tgt, options):
+    def __init__(self, ctx, source, target, options):
         self.ctx = ctx
-        self.src = src
-        self.tgt = tgt
+        self.source = source
+        self.target = target
         self.options = options
-
-    @local
-    def source(self):
-        return self.ctx.get_port(self.src)
-
-    @local
-    def target(self):
-        return self.ctx.get_port(self.tgt)
 
     @local
     def sync(self):
@@ -175,7 +167,7 @@ class Link:
         return '{}>>{}'.format(self.source, self.target)
 
     def __repr__(self):
-        return '{}>>{}'.format(repr(self.source), repr(self.target))
+        return '{}>>{}//{}'.format(repr(self.source), repr(self.target), self.options)
     
 
 class Topology:
@@ -188,35 +180,11 @@ class Topology:
         self.outs = defaultdict(list)
         self.ins = defaultdict(list)
     
-    def register(self, obj):
-        if isinstance(obj, Unit):
-            unit = obj
-        else:
-            unit = self.get_unit(obj)
-        logger.info('TOP:register %s [%r]', unit, self.ctx)
+    def register(self, unit):
         self.units[unit.id] = unit
 
     def lookup(self, uid):
         return self.units[uid]
-
-    @local
-    def flobjs(self):
-        return {}
-
-    def get_unit(self, obj):
-        try:
-            return self.flobjs[obj]
-        except KeyError:
-            for unit in self.units.values():
-                if unit.ref == obj:
-                    self.flobjs[obj] = unit
-                    return unit
-
-        unit = FloUnit(obj, ctx=self.ctx)
-        obj.__unit__ = unit
-
-        self.register(unit)
-        return unit
 
     def _check_restrictions(self, unions, dists):
         for ds in dists:
@@ -230,31 +198,31 @@ class Topology:
         return self
 
     def unify(self, *units):
-        ids = {unit.id for unit in units}
-        logger.info('TOP:unify %s [%r]', ids, self.ctx)
+        units = set(units)
+        logger.info('TOP:unify %s [%r]', units, self.ctx)
         unions = []
         for us in self.unions:
-            if us.intersection(ids):
-                ids.update(us)
+            if us.intersection(units):
+                units.update(us)
             else:
                 unions.append(us)
-        unions.append(ids)
+        unions.append(units)
         logger.debug('TOP.unions %s [%r]', unions, self.ctx)
 
         self._check_restrictions(unions, self.dists)
         self.unions = unions
 
     def distribute(self, *units):
-        ids = {unit.id for unit in units}
-        logger.info('TOP:distribute %s [%r]', ids, self.ctx)
+        units = set(units)
+        logger.info('TOP:distribute %s [%r]', units, self.ctx)
         dists = []
         for ds in self.dists:
-            inter = ds.intersection(ids) 
+            inter = ds.intersection(units) 
             if inter == ds:
-                ds.update(ids)
+                ds.update(units)
             else:
                 dists.append(ds)
-        dists.append(ids)
+        dists.append(units)
         logger.debug('TOP.dists %s [%r]', dists, self.ctx)
 
         self._check_restrictions(self.unions, dists)
@@ -263,7 +231,7 @@ class Topology:
     @shared
     def spaces(self):
         spaces = set()
-        rest = set(self.units.keys())
+        rest = set(self.units.values())
 
         def mk_space(units):
             logger.debug('TOP:mk-space %s [%r]', units, self.ctx)
@@ -276,47 +244,49 @@ class Topology:
 
         # XXX prefare more local spaces ...
         for ds in self.dists:
-            for uid in ds:
-                if uid in rest:
-                    mk_space({uid})
+            for unit in ds:
+                if unit in rest:
+                    mk_space({unit})
             
         if rest:
             mk_space(set(rest))
 
-        logger.info('TOP.spaces %s [%r]', '|'.join(map(str, spaces)), self.ctx)
+        logger.info('TOP.spaces %s [%r]', '|'.join(map(repr, spaces)), self.ctx)
 
         return spaces
 
-    def get_space(self, uid):
+    def get_space(self, unit):
         for space in self.spaces:
-            if uid in space.uids:
+            if unit in space.units:
                 return space
 
-        raise ValueError("no space for %s" % (uid,))
+        raise ValueError("no space for %s" % (unit,))
 
     def infer_kind(self, link):
         if 'kind' in link.options:
             return link.options['kind']
-        pair = {link.source, link.target}
 
-        srcs = link.source.unit.space.uids
+        pair = {link.source, link.target}
+        srcs = link.source.unit.space.units
         if pair.intersection(srcs) == pair:
             return 'union'
 
-        tgts = link.target.unit.space.uids
+        tgts = link.target.unit.space.units
         for ds in self.dists:
             sd = ds.intersection(srcs)
             td = ds.intersection(tgts)
-            if sd and td:
+            both = sd.union(td)
+            if len(both) > 1:
                 return 'dist'
 
-        return 'union'
+        return 'dist'
 
     def link(self, source, target, **opts):
         logger.info('TOP.link %s >> %s // %s [%r]', source, target, opts, self.ctx)
 
-        self.outs[source.id].append((target.id, opts))
-        self.ins[target.id].append((source.id, opts))
+        link = Link(self.ctx, source, target, opts)
+        self.outs[source.id].append(link)
+        self.ins[target.id].append(link)
 
     def get_port(self, pid):
         uid, name = pid.id
@@ -325,17 +295,16 @@ class Topology:
 
     def links_from(self, src):
         links = []
-        for tgt,opts in self.outs[src]:
-            link = Link(self.ctx, src, tgt, opts)
+        for link in self.outs[src]:
             link.options['kind'] = self.infer_kind(link)
             links.append(link)
             logger.debug('TOP:links-from %r [%r]', link, self.ctx)
         return links
 
     def links_to(self, tgt):
+        logger.debug('TOP.links-to %r [%r]', tgt, self.ctx)
         links = []
-        for src,opts in self.ins[tgt]:
-            link = Link(self.ctx, src, tgt, opts)
+        for link in self.ins[tgt]:
             link.options['kind'] = self.infer_kind(link)
             links.append(link)
             logger.debug('TOP:links-to %r [%r]', link, self.ctx)

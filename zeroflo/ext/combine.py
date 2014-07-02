@@ -38,7 +38,8 @@ class Combiner:
         self.definition = coroutine(f)
         self.name = f.__name__
         self.obj = obj
-        self.slots = {k: asyncio.Event() for k in spec.args[1:-1]}
+        self.loop = obj.__ctx__.loop
+        self.slots = {k: asyncio.Event(loop=self.loop) for k in spec.args[1:-1]}
         for slot in self.slots.values():
             slot.set()
         self.vals = {}
@@ -76,7 +77,7 @@ class Combiner:
     def __call__(self, tag=Tag(), **kws):
         logger.debug('CBN:combining %s :: %s [%s]', kws, self.vals, self)
         puts = [self.put(k, v) for k,v in kws.items()]
-        yield from asyncio.gather(*puts)
+        yield from asyncio.gather(*puts, loop=self.loop)
         logger.debug('CBN:combined %s -> %s [%s]', kws, self.vals, self)
 
     def __str__(self):

@@ -22,6 +22,13 @@ class InChan:
     def pull(self):
         raise NotImplementedError
 
+    def __str__(self):
+        return '<<{}'.format(self.path)
+
+    def __repr__(self):
+        return '<<{}'.format(repr(self.path))
+    
+
 class OutChan:
     def __init__(self, path):
         self.path = path
@@ -33,6 +40,12 @@ class OutChan:
     @coroutine
     def push(self, pid, packet):
         raise NotImplementedError
+
+    def __str__(self):
+        return '>>{}'.format(self.path)
+
+    def __repr__(self):
+        return '>>{}'.format(repr(self.path))
 
 
 @connector
@@ -114,6 +127,7 @@ class ZmqOut(OutChan):
         if self.count == 0:
             self.done.clear()
         self.count += 1
+        logger.debug('ZMO:push count=%d (%s)', self.count, self.path)
         yield from self.stream.push(pid, packet)
 
     @coroutine
@@ -122,10 +136,11 @@ class ZmqOut(OutChan):
         done = self.done
         while True:
             logger.debug('ZMO:loop count=%d (%s)', self.count, self.path)
-            nil = yield from self.stream.read()
+            nil, = yield from self.stream.read()
+            assert nil == b'', "nil should be empty bytes, was %r" % nil
             logger.debug('ZMO:loop got %s (%s)', nil, self.path)
             self.count -= 1
-            assert self.count >= 0, "task count should be >=0"
+            assert self.count >= 0, "task count should be >=0, was %d" % self.count
             if self.count == 0:
                 logger.debug('ZMO:loop done (%s)', self.path)
                 done.set()
