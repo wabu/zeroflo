@@ -8,7 +8,8 @@ from . import util
 from .annotate import initialized, delayed
 from .context import context
 from .port import inport, outport, sync, async
-from .topology import Flo
+from .topology import Unit
+from .util import withloop, withctx
 
 import asyncio
 from asyncio import coroutine

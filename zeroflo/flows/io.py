@@ -13,30 +13,34 @@ class Reader(Unit):
         return param.sizeof(chunksize)
 
     @inport
-    def ins(self, filename, tag):
-        lineno = 0
-        rest = ''
-        # TODO use async version
-        with (yield from self.open(filename)) as file:
-            eof = False
-            while not eof:
-                chunk = (yield from file.read(self.chunksize)).decode()
-                eof = file.at_eof()
+    def ins(self, files, tag):
+        if isinstance(files, str):
+            files = [files]
 
-                if eof:
-                    lines,last = chunk.split('\n'), ''
-                    tag = tag.add(filename=filename, lineno=lineno, eof=True)
-                else:
-                    *lines,last = chunk.split('\n')
-                    tag = tag.add(filename=filename, lineno=lineno)
+        for filename in files:
+            lineno = 0
+            rest = ''
+            # TODO use async version
+            with (yield from self.open(filename)) as file:
+                eof = False
+                while not eof:
+                    chunk = (yield from file.read(self.chunksize)).decode()
+                    eof = file.at_eof()
 
-                if lines:
-                    first,*lines = lines
-                    if rest or first:
-                        lines = [rest+first]+lines
-                    rest = last
-                    yield from lines >> tag >> self.out
-                    lineno += len(lines)
+                    if eof:
+                        lines,last = chunk.split('\n'), ''
+                        tag = tag.add(filename=filename, lineno=lineno, eof=True)
+                    else:
+                        *lines,last = chunk.split('\n')
+                        tag = tag.add(filename=filename, lineno=lineno)
+
+                    if lines:
+                        first,*lines = lines
+                        if rest or first:
+                            lines = [rest+first]+lines
+                        rest = last
+                        yield from lines >> tag >> self.out
+                        lineno += len(lines)
 
 class PBzReader(Reader):
     @coroutine

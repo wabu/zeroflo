@@ -1,3 +1,6 @@
 from .combine import combine
 from .join import Join
-from . import bundle, params
+from .trigger import Trigger
+from .params import param, Paramed
+
+from . import bundle

@@ -15,9 +15,10 @@ class Id(namedtuple('FlId', 'name, long, id, ref, pid'), Named):
         return self.pid == os.getpid()
 
     def __eq__(self, other):
-        if not isinstance(other, Id):
+        try:
+            return self.id == other.id
+        except AttributeError:
             return NotImplemented
-        return self.id == other.id
 
     def __hash__(self):
         return hash(self.id)
@@ -108,9 +109,10 @@ class Path:
         return '/'.join(self.names)
 
     def __eq__(self, other):
-        if not isinstance(other, Path):
+        try:
+            return self.ids == other.ids
+        except AttributeError:
             return NotImplemented
-        return self.ids == other.ids
 
     def __hash__(self):
         return hash(self.ids)
@@ -153,9 +155,14 @@ class WithPath:
         self.path = path
 
 
-def ctxmethod(f):
+def withctx(f):
     @wraps(f)
     def insert_ctx(self, *args, **kws):
-        return f(self, *args, ctx=self.__ctx__.ctx, **kws)
+        return f(self, *args, ctx=self.__ctx__, **kws)
     return insert_ctx
 
+def withloop(f):
+    @wraps(f)
+    def insert_ctx(self, *args, **kws):
+        return f(self, *args, loop=self.__ctx__.loop, **kws)
+    return insert_ctx

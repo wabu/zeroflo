@@ -61,7 +61,8 @@ class InferTypes(Unit):
 
     @inport
     def ins(self, data : pd.DataFrame, tag):
-        yield from data.apply(self.try_convert, axis=0) >> tag >> self.out
+        data = data.apply(self.try_convert, axis=0)
+        yield from data >> tag >> self.out
 
 
 class CollectPd(Collect):

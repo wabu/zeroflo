@@ -4,7 +4,7 @@ from ..ext import param, Paramed
 class match(Unit):
     def __init__(self, **matches):
         super().__init__()
-        self.matches = {k: v if isinstance(k,set) else {v} 
+        self.matches = {k: v if isinstance(v, set) else {v} 
                         for k,v in matches.items()}
 
     @outport

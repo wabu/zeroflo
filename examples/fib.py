@@ -1,6 +1,7 @@
 import logging
 import zeroflo as flo
 
+logger = logging.getLogger(__name__)
 
 """
 Fibonacci Flow
@@ -15,22 +16,23 @@ A simple printer is used to show the results
 
 Here's the flow diagram showing the wireing:
 ```
-  ~ space {add} ~     | ~ space {print,lag} ~
-                      |
-                      |
-   .---------------.  |
-  :               _.` |
-  `-> a][add][out ----|--> ins][print]
-  .-> b]          `.  |    
-  :                 `-|--> ins][delay][out -.
-  `-------------------|---------------------`
-                      |
+  ~ space {add} ~      | ~ space {print,lag} ~
+                       |
+                       |
+   .----------------.  |
+  :                _.` |
+  `-> a][add][out =----|-> ins][print]
+  .-> b]           `.  |   
+  :                  `-|-> ins][delay][out -.
+  :                    |                    :
+  `--------------------|--------------------`
+                       |
 ```
 The distribute into different process spaces is arbitrary,
 but shows how easy it es to setup distributed flows.
 """
 
-class Lag(flo.Flo):
+class Lag(flo.Unit):
     def __init__(self, *args, **kws):
         super().__init__(*args, **kws)
         self.setup = False
@@ -41,14 +43,16 @@ class Lag(flo.Flo):
     @flo.inport
     def ins(self, i, tag):
         if self.setup:
-            yield from self.last >> tag >> self.out
+            logger.debug('lag: >> %d << %d', self.last, i)
+            yield from self.last >> tag.add(lag=1) >> self.out
         else:
+            logger.debug('lag: << %d', i)
             self.setup = True
 
         self.last = i
 
 
-class Add(flo.Flo):
+class Add(flo.Unit):
     @flo.outport
     def out(i, tag): pass
 
@@ -59,24 +63,27 @@ class Add(flo.Flo):
     @flo.async
     @flo.inport
     def a(self, a, tag):
+        logger.debug('add: <<a %s (%s)', a, tag.lag)
         yield from self.add(a=a, tag=tag)
 
     @flo.async
     @flo.inport
     def b(self, b, tag):
+        logger.debug('add: <<b %s (%s)', b, tag.lag)
         yield from self.add(b=b, tag=tag)
 
 
-class Print(flo.Flo):
+class Print(flo.Unit):
     @flo.inport
     def ins(self, o, tag):
         print('>>', o)
-        if o > 1e18:
+        if o > 1e78:
             raise ValueError("raising to show how to debug")
 
 def setup_logging():
     logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
     logging.getLogger('zeroflo').setLevel("INFO")
+    #logging.getLogger('examples').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
 

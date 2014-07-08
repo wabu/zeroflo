@@ -46,8 +46,8 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     return pr._stream
 
 
-def fwd(name):
-    f = getattr(aiozmq.core._ZmqTransportImpl, name)
+def fwd(name, impl=aiozmq.core._ZmqTransportImpl):
+    f = getattr(impl, name)
     @wraps(f)
     def fwd(self, *args, **kws):
         return f(self._tr, *args, **kws)
@@ -67,8 +67,8 @@ class ZmqStream:
     get_extra_info = fwd('get_extra_info')
     getsockopt = fwd('getsockopt')
     setsockopt = fwd('setsockopt')
-    set_write_buffer_limits = fwd('set_write_buffer_limits')
-    get_write_buffer_size = fwd('get_write_buffer_size')
+    set_write_buffer_limits = fwd('set_write_buffer_limits', aiozmq.core._FlowControlMixin)
+    get_write_buffer_size = fwd('get_write_buffer_size', aiozmq.core._FlowControlMixin)
 
     bind = fwd('bind')
     unbind = fwd('unbind')
@@ -94,8 +94,6 @@ class ZmqStream:
         """read a multipart message"""
         logger.debug('%s reading', self)
         datas = yield from self._pr._reading.get()
-        if isinstance(datas, Exception):
-            raise datas
         logger.debug('%s read %s', self, [len(p) for p in datas])
         if self._paused and self._pr._reading.qsize() < self._limit:
             logger.debug('%s resumes read', self)
@@ -104,12 +102,12 @@ class ZmqStream:
         return datas
         
     @coroutine
-    def write(self, *datas):
+    def write(self, *datas, **kws):
         """write a multipart message"""
-        logger.debug('%s writes %s', self, [len(p) for p in datas])
+        #logger.debug('%s writes %s', self, [len(p) for p in datas])
         yield from self._pr._writing.wait()
         logger.debug('%s writing', self)
-        self._tr.write(datas)
+        self._tr.write(datas, **kws)
 
     @coroutine
     def pull(self, skip=0, extract=True):
@@ -122,13 +120,13 @@ class ZmqStream:
             return result
 
     @coroutine
-    def push(self, *datas, skip=0):
+    def push(self, *datas, skip=0, **kws):
         """push pickled objects on the socket"""
         if skip:
             yield from self.write(*(
-                        list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]]))
+                        list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]]), **kws)
         else:
-            yield from self.write(*[pickle.dumps(d) for d in datas[skip:]])
+            yield from self.write(*[pickle.dumps(d) for d in datas[skip:]], **kws)
 
     def __str__(self):
         binds = list(self.bindings())

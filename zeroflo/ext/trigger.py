@@ -4,11 +4,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class Trigger(Flo):
+class Trigger(Unit):
     @outport
-    def trig(): pass
+    def out(): pass
 
     @inport
     def once(self, data, tag):
         logger.debug('triggering %s once with %s', self, data >> tag)
-        yield from data >> tag >> self.trig
+        yield from data >> tag >> self.out

@@ -14,15 +14,15 @@ logger = logging.getLogger(__name__)
 class Syncs:
     """ synconization extractors for ports """
     def syncer(*args):
-        @classmethod
-        def sync(cls, path):
+        def sync(path):
             return tuple(path[s] for s in args if path[s])
+        sync.__name__ = args[-1] if args else 'any'
         return sync
 
     any = syncer()
     space = syncer('space')
     unit = syncer('space', 'unit')
-    port = syncer('space', 'unit', 'port') 
+    port = syncer('space', 'unit', 'name') 
 
 
 Sync = namedtuple('Sync', 'target, source')
@@ -82,7 +82,8 @@ class Port(IddPath):
         obj = self.unit.ref
         return getattr(type(obj), self.name).definition.__get__(obj)
 
-    def trigger(self, data=None, tag=None, **kws):
+    @coroutine
+    def cocall(self, data=None, tag=None, **kws):
         self.unit.space.is_local = True
 
         if tag and kws:
@@ -101,6 +102,9 @@ class Port(IddPath):
         logger.debug('PRT>call/flush %s [%r/%s]', packet, self.ctx, self)
         yield from self.ctx.exec.flush()
 
+    def async(self, *args, **kws):
+        return asyncio.async(self.cocall(*args, **kws), loop=self.ctx.loop)
+
     def __call__(self, data=None, tag=None, **kws):
         if self.ctx.loop.is_running():
             # call from inside loop
@@ -108,9 +112,9 @@ class Port(IddPath):
             return self.handle(data, tag)
         elif (not self.unit.space.is_setup) or self.unit.space.is_local:
             # call from outside, but can be localized
-            logger.info('PRT:call/outside [%r/%s]', self.ctx, self)
-            self.ctx.loop.run_until_complete(self.trigger(data=data, tag=tag, **kws))
-            logger.debug('PRT:call/done [%r/%s]', self.ctx, self)
+            logger.info('PRT>call/outside [%r/%s]', self.ctx, self)
+            self.ctx.loop.run_until_complete(self.cocall(data=data, tag=tag, **kws))
+            logger.info('PRT<call/outside [%r/%s]', self.ctx, self)
         else:
             raise NotImplementedError("currently can't call remotes space, "
                                       "use trigger units instead")
@@ -120,11 +124,13 @@ class InPort(Port):
     def links(self):
         return self.ctx.links_to(self.id)
 
-    @coroutine
-    def handle(self, packet):
-        logger.debug('IPT.handle %s [%r/%r]', packet, self.ctx, self)
-        yield from self.definition(*packet)
-
+    @local
+    def handle(self):
+        definition = self.definition
+        @coroutine
+        def handler(packet):
+            yield from definition(*packet)
+        return handler
 
 class OutPort(Port, sugar.OutSugar):
     @local
@@ -141,7 +147,7 @@ class UnboundPort(Conotate, local):
     __sync__ = Sync('port', 'any')
     def __default__(self, obj):
         return self.__port__(ctx=obj.__ctx__,
-                             unit=obj.__unit__, 
+                             unit=obj.__fl__, 
                              name=self.name,
                              sync=self.__sync__)
 

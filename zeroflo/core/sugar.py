@@ -15,31 +15,56 @@ Flow Syntax:
 from asyncio import coroutine
 from functools import wraps
 
-from .util import ctxmethod
+from .util import withctx
+
 
 class UnitSugar:
-    @ctxmethod
+    @withctx
     def __and__(self, other, ctx):
         """ `fl1 & fl2` -> `ctx.top.unify(fl1, fl2)` """
-        if hasattr(other, '__unit__'):
-            ctx.top.unify(self.__unit__, other.__unit__)
-            return Union(ctx, self.__unit__, other.__unit__)
+        if hasattr(other, '__fl__'):
+            ctx.top.unify(self.__fl__, other.__fl__)
+            return Union(ctx, self.__fl__)
         else:
             return NotImplemented
 
-    @ctxmethod
+    @withctx
     def __or__(self, other, ctx):
         """ `fl1 | fl2` -> `ctx.distribute(fl1, fl2)` """
-        if hasattr(other, '__unit__'):
-            ctx.top.distribute(self.__unit__, other.__unit__)
-            return Distr(ctx, self.__unit__, other.__unit__)
+        if hasattr(other, '__fl__'):
+            ctx.top.distribute(self.__fl__, other.__fl__)
+            return Distr(ctx, self.__fl__)
         else:
             return NotImplemented
+
+    @withctx
+    def __pow__(self, num, ctx):
+        """ replicate the processing unit `num` times """
+        ctx.top.replicate({self.__fl__}, num)
+        return self
+
+    def __rshift__(self, other):
+        try:
+            port = self.out
+        except AttributeError as e:
+            return NotImplemented
+        return port >> other
+
+    def __rrshift__(self, other):
+        try:
+            port = self.ins
+        except AttributeError as e:
+            return NotImplemented
+        return other >> port
+
 
 class OutSugar:
     def __rshift__(self, target):
-        """ `data >> tag` -> `Packet(data, tag)` """
-        self.unit.ctx.top.link(self, target)
+        """ outport >> inport """
+        try:
+            return self.unit.ctx.top.link(self, target)
+        except NotImplementedError:
+            return NotImplemented
 
     @coroutine
     def __rrshift__(self, packet):
@@ -47,40 +72,35 @@ class OutSugar:
         yield from self.handle(packet)
 
 
-def locop(f):
+def braceop(f):
     @wraps(f)
     def locy(self, other):
-        if hasattr(other, '__unit__'):
-            other = Loc(self.ctx, other.__unit__)
-        if not isinstance(other, Loc):
+        if hasattr(other, '__fl__'):
+            other = Brace(self.ctx, other.__fl__)
+        if not isinstance(other, Brace):
             return NotImplemented
         return f(self, other)
     return locy
 
-class Loc:
-    def __init__(self, ctx, *fls):
+class Brace:
+    def __init__(self, ctx, left, right=None, brace=None):
         self.ctx = ctx
-        self.fls = fls
+        self.left = left
+        self.right = right or left
+        self.brace = brace or {self.left, self.right}
 
-    @property
-    def left(self):
-        return self.fls[0]
-
-    @property
-    def right(self):
-        return self.fls[-1]
-
-    @locop
+    @braceop
     def __ror__(self, other):
-        return self.dist(other.right, self.left)
+        return other.__or__(self)
 
-    @locop
+    @braceop
     def __or__(self, other):
-        return self.dist(self.right, other.left)
+        self.ctx.distribute(self.right, other.left)
+        return Distr(self.ctx, self.left, other.right, self.brace.union(other.brace))
 
-    def dist(self, *fls):
-        self.ctx.top.distribute(*fls)
-        return Distr(self.ctx, *fls)
+    def __pow__(self, num):
+        self.ctx.top.replicate(self.brace, num)
+        return self
 
     def __str__(self):
         return '({})'.format(self.__show__.join(map(str, self.fls)))
@@ -89,22 +109,19 @@ class Loc:
         return '{}-of({})'.format(self.__kind__, 
                                   ','.join(map(repr, self.fls)))
 
-class Union(Loc):
+class Union(Brace):
     __kind__ = 'union'
     __show__ = '&'
-    @locop
+    @braceop
     def __rand__(self, other):
-        return self.union(other.right, self.left)
+        return other.__and__(self)
 
-    @locop
+    @braceop
     def __and__(self, other):
-        return self.union(self.right, other.left)
+        self.ctx.unify(self.right, other.left)
+        return Union(self.ctx, self.left, other.right, self.brace.union(other.brace))
 
-    def union(self, *fls):
-        self.ctx.top.unify(*fls)
-        return Union(self.ctx, *fls)
-
-class Distr(Loc):
+class Distr(Brace):
     __kind__ = 'distribute'
     __show__ = '|'
 

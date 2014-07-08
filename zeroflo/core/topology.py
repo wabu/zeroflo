@@ -20,8 +20,8 @@ Furthermore, a unit always reference an object it is based on.
   | 1
   |
   | n
- Unit  -ref-> object
-  | 1  1    1
+ UnitRef --ref-- Unit
+  | 1    1     1
   |
   | n
  Port  :::::> Link :::::> Port
@@ -32,7 +32,7 @@ The Topology object has methods to setup and query this structure.
 """
 from .util import IddPath, Path
 from .annotate import local, shared
-from .port import inport, outport
+from .port import inport, outport, OutPort, InPort
 from .exec import Executor
 from . import context, sugar
 
@@ -66,12 +66,20 @@ class Context(IddPath):
     def exec(self):
         return Executor(self)
 
+    @asyncio.coroutine
+    def aquire(self, num=1):
+        yield from self.exec.track.aquire(num)
+
+    @asyncio.coroutine
+    def release(self, num=1):
+        yield from self.exec.track.release(num)
+
     def __getattr__(self, name):
         return getattr(self.top, name)
 
 
-class Unit(IddPath):
-    """ flow unit """
+class Flows(IddPath):
+    """ flow object base """
     __ref__ = 'unit'
     __by__ = ['space', ...]
 
@@ -101,19 +109,36 @@ class Unit(IddPath):
     def space(self):
         return self.ctx.get_space(self)
 
-class FloUnit(Unit):
+class UnitRef(Flows):
     """ unit based on flow object with @inport and @outport definitions  """
     def __init__(self, flobj, **kws):
         ins = [p.name for p in inport.iter(flobj)]
         outs = [p.name for p in outport.iter(flobj)]
         super().__init__(ins=ins, outs=outs, ref=flobj, **kws)
 
-class Flo(sugar.UnitSugar):
+    @asyncio.coroutine
+    def setup(self):
+        yield from self.ref.__setup__()
+
+    @asyncio.coroutine
+    def teardown(self):
+        yield from self.ref.__teardown__()
+
+class Unit(sugar.UnitSugar):
+    """ definition of a flow unit """
     def __init__(self, *args, name=None, **kws):
         super().__init__(*args, **kws)
 
-        self.__unit__ = FloUnit(self, name=name)
-        self.__ctx__ = self.__unit__.ctx
+        self.__fl__ = UnitRef(self, name=name)
+        self.__ctx__ = self.__fl__.ctx
+
+    @asyncio.coroutine
+    def __setup__(self):
+        pass
+
+    @asyncio.coroutine
+    def __teardown__(self):
+        pass
 
 
 class Space(IddPath):
@@ -124,6 +149,7 @@ class Space(IddPath):
         super().__init__(name=name)
         self.ctx = ctx
         self.units = units
+        self.replicate = 0
 
     @shared
     def is_setup(self):
@@ -149,6 +175,17 @@ class Space(IddPath):
     def outgoing(self):
         return {l for ins in self.outports for l in ins.links}
 
+    def __str__(self):
+        base = super().__str__() 
+        if self.replicate:
+            base += '**{}'.format(self.replicate)
+        return '{}{{{}}}'.format(base, '&'.join(map(str, self.units)))
+
+    def __repr__(self):
+        base = super().__repr__() 
+        if self.replicate:
+            base += '**{}'.format(self.replicate)
+        return '{}{{{}}}'.format(base, '&'.join(map(repr, self.units)))
 
 
 class Link:
@@ -161,19 +198,21 @@ class Link:
     @local
     def sync(self):
         sync = self.target.sync
-        return Path(*(self.ctx.path.ids + sync.target(self.target.path) + sync.source(self.source.path)))
+        return Path(*(self.ctx.path.ids + sync.target(self.target.path) 
+                    + sync.source(self.source.path)))
 
     def __str__(self):
         return '{}>>{}'.format(self.source, self.target)
 
     def __repr__(self):
-        return '{}>>{}//{}'.format(repr(self.source), repr(self.target), self.options)
+        return '{}>>{}::{}//{}'.format(repr(self.source), repr(self.target), self.sync, self.options)
     
 
 class Topology:
     def __init__(self, ctx):
         self.ctx = ctx
         self.units = {}
+        self.replicates = {}
         self.unions = []
         self.dists = []
 
@@ -194,7 +233,18 @@ class Topology:
                     raise ValueError(
                         "Following units are requested to "
                         "be unified and distributed:\n%s" 
-                        % {self.lookup_fl(uid) for uid in du})
+                        % du)
+
+        for u1 in unions:
+            for u2 in unions:
+                if u1 == u2:
+                    continue
+                us = u1.intersection(u2)
+                if us:
+                    raise ValueError(
+                        "Following units are requested to "
+                        "be in two unions:\n%s"
+                        % us)
         return self
 
     def unify(self, *units):
@@ -228,6 +278,38 @@ class Topology:
         self._check_restrictions(self.unions, dists)
         self.dists = dists
 
+    def replicate(self, units, num):
+        logger.info('TOP.replicate %s %d [%r]', units, num, self.ctx)
+        # TODO check replicates
+        self.replicates.update({unit.id: num for unit in units})
+
+
+    def complete(self, units):
+        """
+        completes the set of unified units for a space
+         
+        if a unit is not restricted to be inside this space and has incomming
+        connections from this space, just put it here.
+        """
+        done = set()
+        others = [union for union in self.unions if union != units]
+        while done != units:
+            for unit in units.difference(done):
+                done.add(unit)
+                for out in unit.outports:
+                  for lnk in self.outs[out.id]:
+                    tgt = lnk.target.unit
+                    if tgt in units:
+                        continue
+                    logger.debug('TOP?complete %s->%s:%s', unit, tgt, units)
+                    try:
+                        self._check_restrictions(others + [units.union({tgt})], self.dists)
+                    except ValueError:
+                        continue
+                    logger.info('TOP+complete %s->%s:%s', unit, tgt, units)
+                    units.update({tgt})
+        return units
+
     @shared
     def spaces(self):
         spaces = set()
@@ -238,8 +320,14 @@ class Topology:
             space = Space(units, self.ctx)
             spaces.add(space)
             rest.difference_update(units)
+            for unit in units:
+                repl = self.replicates.get(unit.id, 0)
+                if repl:
+                    space.replicate = repl
+            return space
 
         for us in self.unions:
+            us = self.complete(us)
             mk_space(us)
 
         # XXX prefare more local spaces ...
@@ -266,10 +354,12 @@ class Topology:
         if 'kind' in link.options:
             return link.options['kind']
 
-        pair = {link.source, link.target}
+        pair = {link.source.unit, link.target.unit}
         srcs = link.source.unit.space.units
         if pair.intersection(srcs) == pair:
-            return 'union'
+            return 'local'
+
+        return 'distribute'
 
         tgts = link.target.unit.space.units
         for ds in self.dists:
@@ -277,16 +367,18 @@ class Topology:
             td = ds.intersection(tgts)
             both = sd.union(td)
             if len(both) > 1:
-                return 'dist'
+                return 'distribute'
 
-        return 'dist'
+        return 'distribute'
 
     def link(self, source, target, **opts):
+        if not (isinstance(source, OutPort) and isinstance(target, InPort)):
+            raise NotImplementedError("You can only link outports to inports")
         logger.info('TOP.link %s >> %s // %s [%r]', source, target, opts, self.ctx)
-
         link = Link(self.ctx, source, target, opts)
         self.outs[source.id].append(link)
         self.ins[target.id].append(link)
+        return target.unit.ref
 
     def get_port(self, pid):
         uid, name = pid.id
@@ -298,7 +390,7 @@ class Topology:
         for link in self.outs[src]:
             link.options['kind'] = self.infer_kind(link)
             links.append(link)
-            logger.debug('TOP:links-from %r [%r]', link, self.ctx)
+            logger.info('TOP:links-from %r [%r]', link, self.ctx)
         return links
 
     def links_to(self, tgt):
@@ -307,6 +399,6 @@ class Topology:
         for link in self.ins[tgt]:
             link.options['kind'] = self.infer_kind(link)
             links.append(link)
-            logger.debug('TOP:links-to %r [%r]', link, self.ctx)
+            logger.info('TOP:links-to %r [%r]', link, self.ctx)
         return links
 

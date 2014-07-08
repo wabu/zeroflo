@@ -30,7 +30,7 @@ class Sink(flo.Flo):
 
 def setup_logging():
     logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
-    logging.getLogger('zeroflo').setLevel("DEBUG")
+    logging.getLogger('zeroflo').setLevel("INFO")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
 
@@ -53,3 +53,4 @@ if __name__ == "__main__":
 
     # simple call to trigger flow
     src.ins(['one', 'two', 'three'])
+    src.ins(range(9))
