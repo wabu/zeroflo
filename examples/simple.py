@@ -1,7 +1,7 @@
 import logging
 import zeroflo as flo
 
-class Source(flo.Flo):
+class Source(flo.Unit):
     @flo.inport
     def ins(self, datas, tag):
         print('<<', datas)
@@ -12,7 +12,7 @@ class Source(flo.Flo):
     @flo.outport
     def out(): pass
 
-class Process(flo.Flo):
+class Process(flo.Unit):
     @flo.inport
     def ins(self, data, tag):
         print(' !', data)
@@ -22,7 +22,7 @@ class Process(flo.Flo):
     def out(): pass
 
 
-class Sink(flo.Flo):
+class Sink(flo.Unit):
     @flo.inport
     def ins(self, data, tag):
         print('>>', data)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
 
         # specifiy distribution
-        src | prc | snk
+        src | prc & snk
 
     # simple call to trigger flow
     src.ins(['one', 'two', 'three'])

@@ -9,8 +9,6 @@ in- and outports.
 Horizontally we have the actual flow network with arbitrary wiring of ports,
 build by a link between an inport and an outport.
 
-Furthermore, a unit always reference an object it is based on.
-
 ```
  Context
   | 1
@@ -20,8 +18,8 @@ Furthermore, a unit always reference an object it is based on.
   | 1
   |
   | n
- UnitRef --ref-- Unit
-  | 1    1     1
+ Unit
+  | 1
   |
   | n
  Port  :::::> Link :::::> Port
@@ -205,7 +203,7 @@ class Link:
         return '{}>>{}'.format(self.source, self.target)
 
     def __repr__(self):
-        return '{}>>{}::{}//{}'.format(repr(self.source), repr(self.target), self.sync, self.options)
+        return '{}>>{}//{}'.format(repr(self.source), repr(self.target), self.options)
     
 
 class Topology:
@@ -359,17 +357,11 @@ class Topology:
         if pair.intersection(srcs) == pair:
             return 'local'
 
-        return 'distribute'
-
-        tgts = link.target.unit.space.units
-        for ds in self.dists:
-            sd = ds.intersection(srcs)
-            td = ds.intersection(tgts)
-            both = sd.union(td)
-            if len(both) > 1:
-                return 'distribute'
+        if link.target.unit.space.replicate:
+            return 'replicate'
 
         return 'distribute'
+
 
     def link(self, source, target, **opts):
         if not (isinstance(source, OutPort) and isinstance(target, InPort)):

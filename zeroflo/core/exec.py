@@ -91,6 +91,99 @@ def caller(name, self, *args, **kws):
 
 
 class Executor:
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self.top = ctx.top
+        self.track = connect.PacketTracker(ctx.path)
+
+    @coroutine
+    def setup(self):
+        logger.info('EXC.setup')
+        starts = []
+        local = []
+        for space in self.top.spaces:
+            if space.is_setup:
+                continue
+            if space.is_local:
+                local.append(self.track.startup())
+                local.append(self.setup_space(space))
+            else:
+                if space.replicate:
+                    logger.debug('EXC.setup replicates %r %d [%r]', 
+                            space, space.replicate, self.ctx)
+                    starts.append(self.spawn('setup_repl', space))
+                    starts.extend(self.spawn('setup_space', space) for i in range(space.replicate))
+                else:
+                    starts.append(self.spawn('setup_space', space))
+
+            space.is_setup = True
+
+        yield from gather(*starts)
+        logger.info('EXC.setup-spawned %d [%r]', len(starts), self.ctx)
+        yield from gather(*local)
+        logger.info('EXC.setup-localed %d [%r]', len(local), self.ctx)
+
+    @local
+    def mp(self):
+        return mp.get_context('spawn')
+
+    def __entry__(self, coro, *args, **kws):
+        self.ctx.setup()
+        logger.info('EXC!spawn %s %s %s [%r]', coro, args, kws, self.ctx)
+
+        coro = getattr(self, coro)
+        @coroutine
+        def waiting():
+            loops = yield from coro(*args, **kws)
+            if loops:
+                yield from wait(loops)
+        logger.info('EXC!spawn ioloop %s [%r]', coro, self.ctx)
+        self.ctx.loop.run_until_complete(waiting())
+        logger.info('EXC!spawn finished %s [%r]', coro, self.ctx)
+
+    @coroutine
+    def spawn(self, coro, *args, **kws):
+        logger.debug('EXC.spawn %s %s %s [%r]', coro, args, kws, self.ctx)
+        proc = self.mp.Process(target=caller, args=('__entry__', self, coro)+args, kwargs=kws)
+        logger.debug('EXC.spawn-proc %r [%r]', proc, self.ctx)
+        proc.start()
+        logger.debug('EXC.spawn-done %d [%r]', proc.pid, self.ctx)
+
+    @coroutine
+    def setup_space(self, space):
+        logger.debug('EXC.setup-space %r [%r]', space, self.ctx)
+        # XXX call config setup function here
+        space.is_local = True
+
+        setups = []
+        for unit in space.units:
+            setups.append(forkbug.cowrapbug(unit.setup(), namespace=unit.path))
+        yield from gather(*setups, loop=self.ctx.loop)
+
+        tasks = []
+        tasks.append(self.track.connect())
+
+        for link in space.incomming:
+            logger.debug('EXC+setup-in %r [%r/%r]', link, self.ctx, space)
+            tasks.append(self.setup_in(link))
+
+        for link in space.outgoing:
+            logger.debug('EXC+setup-out %r [%r/%r]', link, self.ctx, space)
+            tasks.append(self.setup_out(link))
+
+        waits = yield from gather(*tasks, loop=self.ctx.loop)
+        space.is_setup = True
+        return [w for w in waits if w]
+
+    @coroutine
+    def setup_repl(self, space):
+        tasks = []
+        for link in space.incomming:
+            if link.options['kind'] == 'replicate':
+                tasks.append(self.resolve_repl(link))
+        waits = yield from gather(*tasks, loop=self.ctx.loop)
+        return [w for w in waits if w]
+
     @local
     def ins(self):
         return {}
@@ -121,86 +214,19 @@ class Executor:
             yield from chan.setup()
             return chan
 
-    def __init__(self, ctx):
-        self.ctx = ctx
-        self.top = ctx.top
-        self.track = connect.PacketTracker(ctx.path)
-
-    @coroutine
-    def setup(self):
-        logger.info('EXC.setup')
-        starts = []
-        local = []
-        for space in self.top.spaces:
-            if space.is_setup:
-                continue
-            if space.is_local:
-                local.append(self.track.startup())
-                local.append(self.setup_space(space))
-            else:
-                if space.replicate:
-                    logger.debug('EXC.setup replicates %r %d [%r]', 
-                            space, space.replicate, self.ctx)
-                    starts.extend(self.spawn_space(space) for i in range(space.replicate))
-                else:
-                    starts.append(self.spawn_space(space))
-
-        yield from gather(*starts)
-        logger.info('EXC.setup-spawned %d [%r]', len(starts), self.ctx)
-        yield from gather(*local)
-        logger.info('EXC.setup-localed %d [%r]', len(local), self.ctx)
-
     @local
-    def mp(self):
-        return mp.get_context('spawn')
+    def repls(self):
+        return {}
 
     @coroutine
-    def spawn_space(self, space):
-        logger.debug('EXC.spawn-space %r [%r]', space, self.ctx)
-        proc = self.mp.Process(target=caller, args=('__entry__', self, space), 
-                               name=space.id.long)
-        logger.debug('EXC.spawn-proc %r: %r [%r]', space, proc, self.ctx)
-        proc.start()
-        logger.debug('EXC.spawn-done %r: %d [%r]', space, proc.pid, self.ctx)
-        space.is_setup = True
-
-    def __entry__(self, space):
-        #print(self, sid)
-        #space = self.ctx.top.get_space(sid)
-        #with forkbug.maybug(space.path):
-        self.ctx.setup()
-        logger.info('EXC.spawn-entry %r [%r]', space, self.ctx)
-        @coroutine
-        def waiting():
-            loops = yield from self.setup_space(space)
-            yield from wait(loops)
-        self.ctx.loop.run_until_complete(waiting())
-
-    @coroutine
-    def setup_space(self, space):
-        logger.debug('EXC.setup-space %r [%r]', space, self.ctx)
-        # XXX call config setup function here
-        space.is_local = True
-
-        setups = []
-        for unit in space.units:
-            setups.append(forkbug.cowrapbug(unit.setup(), namespace=unit.path))
-        yield from gather(*setups, loop=self.ctx.loop)
-
-        tasks = []
-        tasks.append(self.track.connect())
-
-        for link in space.incomming:
-            logger.debug('EXC+setup-in %r [%r/%r]', link, self.ctx, space)
-            tasks.append(self.setup_in(link))
-
-        for link in space.outgoing:
-            logger.debug('EXC+setup-out %r [%r/%r]', link, self.ctx, space)
-            tasks.append(self.setup_out(link))
-
-        waits = yield from gather(*tasks, loop=self.ctx.loop)
-        space.is_setup = True
-        return [w for w in waits if w]
+    def resolve_repl(self, link):
+        try:
+            self.repls[link.sync]
+        except KeyError:
+            conn = connect.connectors[link.options['kind']]
+            repl = conn.mk_repl(link)
+            self.repls[link.sync] = repl
+            return (yield from repl.setup())
 
     @coroutine
     def setup_out(self, link):

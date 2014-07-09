@@ -15,7 +15,13 @@ class match(Unit):
         if all(tag[key] in val for key,val in self.matches.items()):
             yield from data >> tag >> self.out
 
-suffixes = ['k', 'm', 'g', 't']
+class forward(Unit):
+    @outport
+    def out(): pass
+
+    @inport
+    def ins(self, data, tag):
+        yield from data >> tag >> self.out
 
 class Collect(Paramed, Unit):
     @param
@@ -75,7 +81,7 @@ class Collect(Paramed, Unit):
 
             if datas:
                 try:
-                    data,tag = yield from asyncio.wait_for(q.get(), timeout)
+                    data,tag = yield from asyncio.wait_for(q.get(), timeout, loop=ctx.loop)
                 except asyncio.TimeoutError:
                     timedout = True
             else:

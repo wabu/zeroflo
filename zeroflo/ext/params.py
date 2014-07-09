@@ -36,7 +36,7 @@ class Paramed:
             if par.name in kws:
                 val = kws.pop(par.name)
                 logger.debug('param %s=%s', par.name, val)
-                par.__set__(self, val)
+                par.__set__(self, par.definition(self, val))
 
     @inport
     def setup(self, _, **kws):

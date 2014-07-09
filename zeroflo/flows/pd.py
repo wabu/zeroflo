@@ -31,7 +31,6 @@ class ToSeries(Unit):
             data.index += tag.lineno
         yield from data >> tag >> self.out
 
-
 class Unstack(Unit):
     @outport
     def out(): pass
@@ -39,6 +38,34 @@ class Unstack(Unit):
     @inport
     def ins(self, data : pd.Series, tag):
         yield from data.unstack() >> tag >> self.out
+
+
+class Drop(Unit):
+    def __init__(self, drop, *args, **kws):
+        super().__init__(*args, **kws)
+        self.drop = drop
+
+    @outport
+    def out(): pass
+
+    @inport
+    def ins(self, data: pd.DataFrame, tag):
+        data = data[data.columns - self.drop]
+        yield from data >> tag >> self.out
+
+
+class Select(Unit):
+    def __init__(self, select, *args, **kws):
+        super().__init__(*args, **kws)
+        self.select = select
+
+    @outport
+    def out(): pass
+
+    @inport
+    def ins(self, data: pd.DataFrame, tag):
+        data = data[data.columns & self.select]
+        yield from data >> tag >> self.out
 
 
 class InferTypes(Unit):

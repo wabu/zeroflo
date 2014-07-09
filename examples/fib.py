@@ -76,9 +76,9 @@ class Add(flo.Unit):
 class Print(flo.Unit):
     @flo.inport
     def ins(self, o, tag):
-        print('>>', o)
         if o > 1e78:
             raise ValueError("raising to show how to debug")
+        print('>>', o)
 
 def setup_logging():
     logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')

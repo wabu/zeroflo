@@ -94,6 +94,7 @@ class Chan:
         pass
 
     __typstr__ = '<>'
+    __kind__ = None
 
     def __str__(self):
         return '{}{}'.format(self.__typstr__, self.path)
@@ -104,6 +105,7 @@ class Chan:
 
 class InChan(Chan):
     __typstr__ = '<<'
+    __kind__ = 'in'
 
     @coroutine
     def pull(self):
@@ -112,6 +114,8 @@ class InChan(Chan):
 
 class OutChan(Chan):
     __typstr__ = '<<'
+    __kind__ = 'out'
+
     @coroutine
     def push(self, pid, packet):
         raise NotImplementedError
@@ -127,7 +131,7 @@ class LocalConnector:
             q = self.queues[path]
             return q
         except KeyError:
-            q = asyncio.Queue(16)
+            q = asyncio.Queue(4)
             self.queues[path] = q
             return q
 
@@ -160,68 +164,34 @@ class LocalIn(Local, InChan):
 class ZmqConnector:
     kind = 'distribute'
 
-    def get_direction(self, link):
-        """
-        tgt:
-            src -.
-            src -- tgt
-            src -`
-
-        src:
-                .- tgt
-            src -- tgt
-                `- tgt
-
-        None:
-            src -- tgt
-            src -- tgt
-            src -- tg
-        """
-        num_src = link.source.unit.space.replicate
-        num_tgt = link.target.unit.space.replicate
-        if num_src <= 1:
-            return 'src'
-        if num_tgt <= 1:
-            return 'tgt'
-        
-        raise NotImplementedError
-
     def mk_out(self, link):
-        out = ZmqOut(path=link.sync, direction=self.get_direction(link))
-        return out
+        return ZmqOut(path=link.sync)
 
     def mk_in(self, link):
-        ins = ZmqIn(path=link.sync, direction=self.get_direction(link))
-        return ins
+        return ZmqIn(path=link.sync)
 
-class Zmq:
-    def __init__(self, *, direction, **kws):
-        super().__init__(**kws)
-        self.direction = direction
 
-class ZmqOut(Zmq, OutChan):
+class Zmq(Chan):
+    __setup_type__ = aiozmq.zmq.DEALER
+    __setup_kind__ = None
+    __setup_address__ = 'ipc://{}/chan'
+
     @coroutine
     def setup(self):
-        how = 'bind' if self.direction == 'src' else 'connect'
-        address = 'ipc://{}/chan'.format(self.path.namespace)
+        how = self.__setup_kind__
+        addr = self.__setup_address__.format(self.path.namespace)
+        self.stream = yield from zmqtools.create_zmq_stream(self.__setup_type__, **{how: addr})
+        logger.info('ZMQ.setup-%s %s=%s', self.__kind__, how, addr)
 
-        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, 
-                **{how: address})
-        logger.info('ZQ>.setup %s=%s', how, self.path)
+class ZmqOut(OutChan, Zmq):
+    __setup_kind__ = 'connect'
 
     @coroutine
     def push(self, pid, packet):
         yield from self.stream.push(pid, packet)
 
-class ZmqIn(Zmq, InChan):
-    @coroutine
-    def setup(self):
-        how = 'bind' if self.direction == 'tgt' else 'connect'
-        address = 'ipc://{}/chan'.format(self.path.namespace)
-
-        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, 
-                **{how: address})
-        logger.info('ZQ<.setup %s=%s', how, self.path)
+class ZmqIn(InChan, Zmq):
+    __setup_kind__ = 'bind'
 
     @coroutine
     def pull(self):
@@ -231,50 +201,59 @@ class ZmqIn(Zmq, InChan):
 
 
 @connector
-class ZmqDistirbute(ZmqConnector):
-    kind = 'load-balance'
+class ZmqReplicate(ZmqConnector):
+    kind = 'replicate'
 
-    def mk_balance(self, link):
-        return 
+    def mk_repl(self, link):
+        return ZmqLoadBalance(link.sync)
 
     def mk_in(self, link):
-        wrk = ZmqWorker
+        return ZmqWorker(link.sync)
+
+    def mk_out(self, link):
+        return ZmqClient(link.sync)
 
 
-class ZmqLoadBalance(Chan):
-    @coroutine
-    def setup(self):
-        self.incomming = yield from zmqtools.create_zmq_stream(
-                aiozmq.zmq.DEALER, bind='ipc://{}/chan-in'.format(self.path.namespace))
-        self.outgoing = yield from zmqtools.create_zmq_stream(
-                aiozmq.zmq.ROUTER, bind='ipc://{}/chan-in'.format(self.path.namespace))
-        return asyncio.async(loop)
+class ZmqClient(ZmqOut):
+    __setup_address__ = 'ipc://{}/chan-in'
 
-    @coroutine
-    def loop(self):
-        incomming = self.incomming.pull
-        recv = self.outgoing.recv
-        push = self.outoging.push
-        while True:
-            load = yield from incomming()
-            worker, _ = yield from recv()
-            asyncio.async(push(worker, *load, skip=1))
-
-
-class ZmqWorker(Zmq, InChan):
-    @coroutine
-    def setup(self):
-        how = 'bind' if self.direction == 'tgt' else 'connect'
-        address = 'ipc://{}/chan'.format(self.path.namespace)
-
-        self.stream = yield from zmqtools.create_zmq_stream(aiozmq.zmq.DEALER, 
-                **{how: address})
-        logger.info('ZQ<.setup %s=%s', how, self.path)
+class ZmqWorker(InChan, Zmq):
+    __typstr__ = '><'
+    __setup_kind__ = 'connect'
+    __setup_type__ = aiozmq.zmq.REQ
+    __setup_address__ = 'ipc://{}/chan-out'
 
     @coroutine
     def pull(self):
-        yield from self.socket.write(b'')
+        logger.debug('ZQW.pull %s', self)
+        yield from self.stream.write(b'')
+        logger.debug('ZQW.pull >>')
         pid, packet = yield from self.stream.pull()
+        logger.debug('ZQW.pull %s << %s', pid, packet)
         return pid, packet
+
+class ZmqLoadBalance(Chan):
+    __kind__ = 'balance'
+
+    @coroutine
+    def setup(self):
+        logger.debug('ZQB.setup %s', self)
+        self.incomming = yield from zmqtools.create_zmq_stream(
+                aiozmq.zmq.DEALER, bind='ipc://{}/chan-in'.format(self.path.namespace))
+        self.outgoing = yield from zmqtools.create_zmq_stream(
+                aiozmq.zmq.ROUTER, bind='ipc://{}/chan-out'.format(self.path.namespace))
+        return asyncio.async(self.loop())
+
+    @coroutine
+    def loop(self):
+        incomming = self.incomming.read
+        read = self.outgoing.read
+        write = self.outgoing.write
+        while True:
+            data = yield from incomming()
+            logger.debug('ZQB.loop incomming %r', [len(d) for d in data])
+            worker,_,__ = yield from read()
+            logger.debug('ZQB.loop outgoing %s', worker)
+            asyncio.async(write(worker, b'', *data))
 
 
