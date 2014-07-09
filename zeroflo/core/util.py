@@ -32,7 +32,9 @@ class Id(namedtuple('FlId', 'name, long, id, ref, pid'), Named):
 
 class Sym(Id):
     """ simple string symbol with same interface as Id """
-    def __new__(cls, str, ref):
+    def __new__(cls, str, ref, *args):
+        if args:
+            return super().__new__(cls, str, ref, *args)
         return super().__new__(cls, str, str, hash(str), ref, os.getpid())
 
     def __init__(self, str, ref):

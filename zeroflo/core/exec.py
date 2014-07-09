@@ -2,7 +2,7 @@ from .annotate import local
 from . import forkbug
 from . import connect
 
-from asyncio import coroutine, gather, wait, async
+from asyncio import coroutine, gather, wait, async, iscoroutinefunction
 from collections import namedtuple, defaultdict
 
 import operator
@@ -86,7 +86,7 @@ class Tag(dict):
         return ','.join(map(str, sorted(self.keys())))
 
 
-def caller(name, self, *args, **kws):
+def caller(self, name, *args, **kws):
     return getattr(self, name)(*args, **kws)
 
 
@@ -111,10 +111,11 @@ class Executor:
                 if space.replicate:
                     logger.debug('EXC.setup replicates %r %d [%r]', 
                             space, space.replicate, self.ctx)
-                    starts.append(self.spawn('setup_repl', space))
-                    starts.extend(self.spawn('setup_space', space) for i in range(space.replicate))
+                    starts.append(self.setup_repls(space))
+                    starts.extend(self.spawn(self.setup_space, space) 
+                            for i in range(space.replicate))
                 else:
-                    starts.append(self.spawn('setup_space', space))
+                    starts.append(self.spawn(self.setup_space, space))
 
             space.is_setup = True
 
@@ -127,24 +128,32 @@ class Executor:
     def mp(self):
         return mp.get_context('spawn')
 
-    def __entry__(self, coro, *args, **kws):
+    def run(self, obj, name, args, kws):
         self.ctx.setup()
-        logger.info('EXC!spawn %s %s %s [%r]', coro, args, kws, self.ctx)
 
-        coro = getattr(self, coro)
-        @coroutine
-        def waiting():
-            loops = yield from coro(*args, **kws)
-            if loops:
-                yield from wait(loops)
-        logger.info('EXC!spawn ioloop %s [%r]', coro, self.ctx)
-        self.ctx.loop.run_until_complete(waiting())
-        logger.info('EXC!spawn finished %s [%r]', coro, self.ctx)
+        logger.info('EXC!spawn %s.%s(...) [%r]', obj, name, self.ctx)
+
+        method = getattr(obj, name)
+        if iscoroutinefunction(method):
+            logger.info('EXC!spawn ioloop [%r]', self.ctx)
+            @coroutine
+            def waiting():
+                loops = yield from method(*args, **kws)
+                if loops:
+                    yield from wait(loops)
+            self.ctx.loop.run_until_complete(waiting())
+        else:
+            method(*args, **kws)
+        
+        logger.info('EXC!spawn finished %s.%s [%r]', obj, name, self.ctx)
 
     @coroutine
-    def spawn(self, coro, *args, **kws):
-        logger.debug('EXC.spawn %s %s %s [%r]', coro, args, kws, self.ctx)
-        proc = self.mp.Process(target=caller, args=('__entry__', self, coro)+args, kwargs=kws)
+    def spawn(self, method, *args, **kws):
+        obj = method.__self__
+        name = method.__name__
+
+        logger.debug('EXC.spawn %s.%s %s %s [%r]', obj, name, args, kws, self.ctx)
+        proc = self.mp.Process(target=caller, args=(self, 'run', obj, name, args, kws))
         logger.debug('EXC.spawn-proc %r [%r]', proc, self.ctx)
         proc.start()
         logger.debug('EXC.spawn-done %d [%r]', proc.pid, self.ctx)
@@ -173,15 +182,6 @@ class Executor:
 
         waits = yield from gather(*tasks, loop=self.ctx.loop)
         space.is_setup = True
-        return [w for w in waits if w]
-
-    @coroutine
-    def setup_repl(self, space):
-        tasks = []
-        for link in space.incomming:
-            if link.options['kind'] == 'replicate':
-                tasks.append(self.resolve_repl(link))
-        waits = yield from gather(*tasks, loop=self.ctx.loop)
         return [w for w in waits if w]
 
     @local
@@ -214,19 +214,22 @@ class Executor:
             yield from chan.setup()
             return chan
 
-    @local
-    def repls(self):
-        return {}
 
     @coroutine
-    def resolve_repl(self, link):
-        try:
-            self.repls[link.sync]
-        except KeyError:
-            conn = connect.connectors[link.options['kind']]
-            repl = conn.mk_repl(link)
-            self.repls[link.sync] = repl
-            return (yield from repl.setup())
+    def setup_repls(self, space):
+        tasks = []
+        done = set()
+        conn = connect.connectors['replicate']
+
+        for link in space.incomming:
+            if (link.options['kind'] == 'replicate' 
+                    and link.sync not in done):
+                repl = conn.mk_repl(link)
+                tasks.append(self.spawn(repl.run))
+                done.add(link.sync)
+        waits = yield from gather(*tasks, loop=self.ctx.loop)
+        return [w for w in waits if w]
+
 
     @coroutine
     def setup_out(self, link):

@@ -4,6 +4,7 @@ from . import zmqtools
 
 import asyncio
 import aiozmq
+import zmq
 import weakref
 import sys
 from asyncio import coroutine
@@ -235,25 +236,28 @@ class ZmqWorker(InChan, Zmq):
 class ZmqLoadBalance(Chan):
     __kind__ = 'balance'
 
-    @coroutine
-    def setup(self):
-        logger.debug('ZQB.setup %s', self)
-        self.incomming = yield from zmqtools.create_zmq_stream(
-                aiozmq.zmq.DEALER, bind='ipc://{}/chan-in'.format(self.path.namespace))
-        self.outgoing = yield from zmqtools.create_zmq_stream(
-                aiozmq.zmq.ROUTER, bind='ipc://{}/chan-out'.format(self.path.namespace))
-        return asyncio.async(self.loop())
+    def run(self):
+        logger.info('ZQB.run %s', self)
+        context = zmq.Context()
+        incomming = context.socket(zmq.DEALER)
+        incomming.bind('ipc://{}/chan-in'.format(self.path.namespace))
+        outgoing = context.socket(zmq.REP)
+        outgoing.bind('ipc://{}/chan-out'.format(self.path.namespace))
 
-    @coroutine
-    def loop(self):
-        incomming = self.incomming.read
-        read = self.outgoing.read
-        write = self.outgoing.write
         while True:
-            data = yield from incomming()
-            logger.debug('ZQB.loop incomming %r', [len(d) for d in data])
-            worker,_,__ = yield from read()
-            logger.debug('ZQB.loop outgoing %s', worker)
-            asyncio.async(write(worker, b'', *data))
+            fpid = incomming.recv(copy=False)
+            fpacket = incomming.recv(copy=False)
 
+            logger.debug('ZQB.loop incomming %r, %r', fpid, fpacket)
+
+            _ = outgoing.recv()
+
+            logger.debug('ZQB.loop outgoing')
+
+            outgoing.send(fpid, zmq.SNDMORE, copy=False)
+            outgoing.send(fpacket, copy=False)
+
+            logger.debug('ZQB.loop send back task')
+
+        logger.info('ZQB.done %s', self)
 
