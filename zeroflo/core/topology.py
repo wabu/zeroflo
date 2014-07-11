@@ -124,10 +124,10 @@ class UnitRef(Flows):
 
 class Unit(sugar.UnitSugar):
     """ definition of a flow unit """
-    def __init__(self, *args, name=None, **kws):
+    def __init__(self, *args, name=None, ctx=None, **kws):
         super().__init__(*args, **kws)
 
-        self.__fl__ = UnitRef(self, name=name)
+        self.__fl__ = UnitRef(self, name=name, ctx=ctx)
         self.__ctx__ = self.__fl__.ctx
 
     @asyncio.coroutine
@@ -213,12 +213,16 @@ class Topology:
         self.replicates = {}
         self.unions = []
         self.dists = []
+        self.local = set()
 
         self.outs = defaultdict(list)
         self.ins = defaultdict(list)
     
     def register(self, unit):
         self.units[unit.id] = unit
+
+    def put_local(self, unit):
+        self.local.add(unit)
 
     def lookup(self, uid):
         return self.units[uid]
@@ -337,7 +341,8 @@ class Topology:
         if rest:
             mk_space(set(rest))
 
-        logger.info('TOP.spaces %s [%r]', '|'.join(map(repr, spaces)), self.ctx)
+        for space in spaces:
+            logger.info('TOP.space %r', space)
 
         return spaces
 

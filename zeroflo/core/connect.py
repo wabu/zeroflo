@@ -70,16 +70,16 @@ class PacketTracker:
     @coroutine
     def loop(self, stream, event):
         try:
-            count = 0
+            self.count = 0
             logger.info('PKT.looping')
             while True:
                 p, = yield from stream.read()
-                if count == 0:
+                if self.count == 0:
                     self.event.clear()
                 num = int.from_bytes(p, 'little', signed=True)
-                count += num
-                logger.debug('PKT<loop %-d -> %d', num, count)
-                if count == 0:
+                self.count += num
+                logger.debug('PKT<loop %-d -> %d', num, self.count)
+                if self.count == 0:
                     self.event.set()
         finally:
             stream.close()
@@ -181,7 +181,10 @@ class Zmq(Chan):
     def setup(self):
         how = self.__setup_kind__
         addr = self.__setup_address__.format(self.path.namespace)
-        self.stream = yield from zmqtools.create_zmq_stream(self.__setup_type__, **{how: addr})
+        self.stream = yield from zmqtools.create_zmq_stream(self.__setup_type__)
+        self.stream.setsockopt(zmq.SNDHWM, 32)
+        self.stream.setsockopt(zmq.RCVHWM, 32)
+        yield from getattr(self.stream, how)(addr)
         logger.info('ZMQ.setup-%s %s=%s', self.__kind__, how, addr)
 
 class ZmqOut(OutChan, Zmq):
@@ -240,8 +243,10 @@ class ZmqLoadBalance(Chan):
         logger.info('ZQB.run %s', self)
         context = zmq.Context()
         incomming = context.socket(zmq.DEALER)
+        incomming.setsockopt(zmq.RCVHWM, 128)
         incomming.bind('ipc://{}/chan-in'.format(self.path.namespace))
         outgoing = context.socket(zmq.REP)
+        outgoing.setsockopt(zmq.SNDHWM, 512)
         outgoing.bind('ipc://{}/chan-out'.format(self.path.namespace))
 
         while True:

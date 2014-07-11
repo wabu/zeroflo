@@ -68,22 +68,54 @@ class Select(Unit):
         yield from data >> tag >> self.out
 
 
+fill_dtypes = {
+    np.dtype(bool): False,
+    np.dtype(int): 0,
+}
+
 class InferTypes(Unit):
     @outport
     def out(): pass
 
     @staticmethod
     def try_convert(x):
-        if not pd.lib.is_string_array(x.values):
-            return x
+        dn = x.dropna().astype(str)
+
+        # convert user ids to int
+        dn = dn[dn!='']
         try:
-            x = pd.Series(pd.lib.maybe_convert_numeric(x.values, {'nan', 'NaN'}), 
-                    index=x.index)
-        except ValueError as e:
+            if (dn.str[:1]=='u').all():
+                dn = dn.str[1:].astype(int)
+                x = dn.reindex(x.index, fill_value=0)
+        except ValueError:
             pass
-        if (x.dtype == np.dtype(int)
-            and ((x > 5e11) & (x < 20e11)).all()):
-            x = x.astype('datetime64[ms]')
+
+        conv = []
+        for convert,*args in [
+                (pd.lib.maybe_convert_numeric, {'nan', 'NaN'}),
+                (pd.lib.try_parse_dates,),
+                (pd.lib.maybe_convert_bool,),
+            ]:
+            try:
+                conv = convert(dn.values, *args)
+                if conv.dtype != dn.dtype:
+                    break
+            except ValueError as e:
+                pass
+
+        if len(conv):
+            dn = pd.Series(conv, dn.index)
+            x = pd.Series(conv, index=dn.index).reindex(index=x.index, 
+                    fill_value=fill_dtypes.get(conv.dtype, np.nan))
+
+        if (pd.lib.is_integer_array(x.values) or 
+            pd.lib.is_float_array(x.values) and (dn.astype(int) == dn).all()):
+
+            dates = dn[dn!=0]
+            if len(dates) and ((dates > 5e11) & (dates < 20e11)).all():
+                dn = dates.astype('datetime64[ms]')
+                x = dn.reindex(x.index)
+
         return x
 
     @inport
