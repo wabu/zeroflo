@@ -23,13 +23,33 @@ class ToSeries(Unit):
         pass
 
     @inport
-    def ins(self, data : [...], tag : {'lineno': int}):
+    def ins(self, data, tag):
         if not data:
-            return
+            yield from pd.Series() >> tag >> self.out
+
         data = pd.Series(data)
         if tag.lineno:
             data.index += tag.lineno
+        elif tag.offset:
+            data.index += tag.offset
         yield from data >> tag >> self.out
+
+class IndexContinued(Unit):
+    @outport
+    def out(self, data, tag):
+        pass
+
+    @coroutine
+    def __setup__(self):
+        self.offset = 0
+
+    @inport
+    def ins(self, data, tag):
+        offset = self.offset
+        self.offset = end = offset + len(data)
+        data.index = np.arange(offset, end)
+        yield from data >> tag >> self.out
+
 
 class Unstack(Unit):
     @outport

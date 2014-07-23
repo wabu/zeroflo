@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 class ListFiles(Paramed, Unit):
     @param
-    def dirs(self, dirs=[]):
+    def dirs(self, dirs=['.']):
+        """ directories where to look for files """
         return [Path(d) for d in dirs]
 
     @outport
@@ -19,6 +20,7 @@ class ListFiles(Paramed, Unit):
 
     @inport
     def ins(self, matches, tag):
+        """ find all matching files """
         if isinstance(matches, str):
             matches = [matches]
 
@@ -38,6 +40,7 @@ class ListFiles(Paramed, Unit):
             
 
 class Reader(Paramed, Unit):
+    """ read chunks of lines """
     @outport
     def out(): pass
 
@@ -46,54 +49,58 @@ class Reader(Paramed, Unit):
         return param.sizeof(chunksize)
 
     @param
-    def strip_end(self, strip_end=True):
-        return strip_end
+    def offset(self, offset=0):
+        return offset
 
     @inport
     def ins(self, filename, tag):
         skip = tag.skip
         limit = tag.limit
 
+        offset = self.offset
         lineno = 0
         rest = ''
-        # TODO use async version
+
         with (yield from self.open(filename)) as file:
             eof = False
             while not eof:
                 chunk = (yield from file.read(self.chunksize)).decode()
                 eof = file.at_eof()
                 if eof:
-                    tag = tag.add(eof=True)
-                tag = tag.add(filename=filename, lineno=lineno)
+                    tag = tag.add(eof=True, flush=True)
+                tag = tag.add(filename=filename, lineno=lineno, offset=offset)
 
                 first,*lines = chunk.split('\n')
                 lines.insert(0, rest+first)
 
                 rest = lines.pop()
-                if eof and (not self.strip_end or rest.strip()):
+                if eof and rest.strip():
                     lines.append(rest)
 
-                lineno += len(lines)
+                length = len(lines)
+                lineno += length
+                offset += length
 
                 if skip:
-                    if len(lines) >= skip:
-                        skip -= len(lines)
+                    if length >= skip:
+                        skip -= length
                         continue
                     else:
                         lines = lines[skip:]
                         skip = 0
 
                 if limit:
-                    if limit <= len(lines):
+                    if limit <= length:
                         lines = lines[:limit]
                         eof = tag.eof = True
                         tag.limited = True
                     else:
-                        limit -= len(lines)
+                        limit -= length
 
                 if lines:
                     yield from lines >> tag >> self.out
                 elif eof:
+                    # ensure that eof gets send out
                     yield from [] >> tag >> self.out
 
 

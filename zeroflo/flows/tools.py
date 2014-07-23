@@ -56,6 +56,10 @@ class Collect(Paramed, Unit):
     def collectby(self, collectby=None):
         return collectby
 
+    @param
+    def flush(self, value=True):
+        return value
+
     @outport
     def out(self, data, tag):
         pass
@@ -89,19 +93,22 @@ class Collect(Paramed, Unit):
         release = ctx.release
 
         while True:
-            timedout = False
+            flush = False
 
             if datas:
                 try:
                     data,t = yield from asyncio.wait_for(q.get(), 
                             first + timeout - time.time(), loop=ctx.loop)
                 except asyncio.TimeoutError:
-                    timedout = True
+                    flush = True
             else:
-                first = time.time()
                 data,t = yield from q.get()
+                first = time.time()
 
-            if not timedout and data is not None:
+            if t is None and not data and self.flush:
+                flush = True
+
+            if not flush and t is not None:
                 tag = tag or t
                 datas.append(data)
                 total += len(data)
@@ -111,7 +118,7 @@ class Collect(Paramed, Unit):
                 warmup -= 1
                 count = number
 
-            if timedout or count > number or total > length or data is None:
+            if flush or count > number or total > length or t is None:
                 if datas:
                     out = reduce(datas)
                     yield from out >> tag.add(
@@ -123,7 +130,7 @@ class Collect(Paramed, Unit):
                     datas=[]
                     tag = port.Tag()
 
-            if not timedout and data is None:
+            if not flush and t is None:
                 break
 
     @inport
