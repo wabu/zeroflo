@@ -2,7 +2,8 @@
 Asyncio ZMQ tools
 -----------------
 
-- `create_zmq_stream`/`ZmqStream`: a high level coroutine based interface to zmq messaging
+- `create_zmq_stream`/`ZmqStream`: 
+  a high level coroutine based interface to zmq messaging
 """
 
 import aiozmq
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 @coroutine
 def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     """
-    create ZmqStream stream based on `aiozmq.ZmqEventLoop.create_zmq_connection`
+    create ZmqStream stream based on `aiozmq.create_zmq_connection`
     """
     if bind:
         info = (zmq_type, 'bind', bind)
@@ -38,7 +39,7 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
         limit = 16
 
     pr = ZmqStreamProtocol(limit)
-    tr,_ = yield from asyncio.get_event_loop().create_zmq_connection(lambda: pr, 
+    tr,_ = yield from aiozmq.create_zmq_connection(lambda: pr, 
             zmq_type=zmq_type, connect=connect, bind=bind)
 
     pr._stream = ZmqStream(tr, pr, limit)
@@ -67,8 +68,8 @@ class ZmqStream:
     get_extra_info = fwd('get_extra_info')
     getsockopt = fwd('getsockopt')
     setsockopt = fwd('setsockopt')
-    set_write_buffer_limits = fwd('set_write_buffer_limits', aiozmq.core._FlowControlMixin)
-    get_write_buffer_size = fwd('get_write_buffer_size', aiozmq.core._FlowControlMixin)
+    set_write_buffer_limits = fwd('set_write_buffer_limits')
+    get_write_buffer_size = fwd('get_write_buffer_size')
 
     bind = fwd('bind')
     unbind = fwd('unbind')
@@ -123,8 +124,8 @@ class ZmqStream:
     def push(self, *datas, skip=0, **kws):
         """push pickled objects on the socket"""
         if skip:
-            yield from self.write(*(
-                        list(datas[:skip]) + [pickle.dumps(d) for d in datas[skip:]]), **kws)
+            yield from self.write(*(list(datas[:skip]) + 
+                                    [pickle.dumps(d) for d in datas[skip:]]), **kws)
         else:
             yield from self.write(*[pickle.dumps(d) for d in datas[skip:]], **kws)
 

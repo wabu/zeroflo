@@ -3,6 +3,9 @@ from ..ext import param, Paramed
 
 import time
 import logging
+
+from collections import defaultdict
+
 logger = logging.getLogger(__name__)
 
 class match(Unit):
@@ -27,10 +30,66 @@ class forward(Unit):
     def ins(self, data, tag):
         yield from data >> tag >> self.out
 
+
+class tagonly(Unit):
+    @outport
+    def out(): pass
+
+    @inport
+    def ins(self, _, tag):
+        yield from None >> tag >> self.out
+
+
+class Reorder(Paramed, Unit):
+    @param
+    def by(self, val='path'):
+        return val
+
+    @param
+    def max(self, val=0):
+        return val
+
+    @outport
+    def out(): pass
+
+    @coroutine
+    def __setup__(self):
+        self.orders = []
+        self.queued = defaultdict(list)
+
+    @coroutine
+    def push(self):
+        queued = self.queued
+        orders = self.orders
+        while orders:
+            q = queued[orders[0]]
+            if not q:
+                break
+
+            load, tag = q.pop(0)
+            yield from load >> tag >> self.out
+
+            if tag.flush:
+                if queued[orders[0]]:
+                    raise
+                queued.pop(orders[0])
+                orders.pop(0)
+
+    @inport
+    def order(self, _, tag):
+        self.orders.append(tag[self.by])
+        yield from self.push()
+
+    @inport
+    def ins(self, load, tag):
+        self.queued[tag[self.by]].append((load,tag))
+        yield from self.push()
+
+
 class Collect(Paramed, Unit):
     @param
     def warmup(self, warmup=128):
-        return warmup
+            return warmup
 
     @param
     def number(self, number=64):
@@ -105,11 +164,11 @@ class Collect(Paramed, Unit):
                 data,t = yield from q.get()
                 first = time.time()
 
-            if t is None and not data and self.flush:
+            if t is None and data is None and self.flush:
                 flush = True
 
             if not flush and t is not None:
-                tag = tag or t
+                tag.update(t)
                 datas.append(data)
                 total += len(data)
                 count += 1
@@ -118,7 +177,7 @@ class Collect(Paramed, Unit):
                 warmup -= 1
                 count = number
 
-            if flush or count > number or total > length or t is None:
+            if flush or count > number or total > length or t is None or tag.flush:
                 if datas:
                     out = reduce(datas)
                     yield from out >> tag.add(

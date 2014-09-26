@@ -8,6 +8,7 @@ setup(
     install_requires = [
             'docutils>=0.3',
             'aiozmq>=0.4',
+            'pyadds>=0.1',
             ],
     package_data = {
         '': ['*.txt', '*.rst'],

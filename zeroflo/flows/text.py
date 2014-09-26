@@ -14,17 +14,14 @@ class Lines(Unit):
     def ins(self, data, tag):
         rest = self.rest
 
-        if not data:
-            if rest.strip():
-                yield from [rest.strip()] >> tag >> self.out
-            else:
-                yield from [] >> tag >> self.out
-            rest = ''
-        else:
-            *lines,rest = (rest+data).split('\n')
-            if lines:
-                yield from lines >> tag >> self.out
 
+        *lines,rest = (rest+data).split('\n')
+        if tag.flush:
+            if rest.strip():
+                lines.append(rest)
+            rest=''
+
+        yield from lines >> tag >> self.out
         self.rest = rest
 
 

@@ -4,6 +4,8 @@ from ..flows.tools import Collect
 
 import pandas as pd
 import numpy as np
+import re
+
 from functools import wraps
 
 def skip_empty(port):
@@ -26,13 +28,82 @@ class ToSeries(Unit):
     def ins(self, data, tag):
         if not data:
             yield from pd.Series() >> tag >> self.out
-
+            return
         data = pd.Series(data)
-        if tag.lineno:
-            data.index += tag.lineno
-        elif tag.offset:
-            data.index += tag.offset
         yield from data >> tag >> self.out
+
+
+class ToFrame(Paramed, Unit):
+    @param
+    def columns(self, val):
+        if isinstance(val, str):
+            val = val.split()
+        return pd.Index(val)
+
+    @param
+    def seperator(self, val=',\s*'):
+        return val
+
+    @outport
+    def tails():
+        """ port getting tails for lines with data that was to long for the supplied columns """
+
+    @outport
+    def out():
+        """ port for framed data """
+
+    @inport
+    def ins(self, lines, tag):
+        """ port getting lines of data """
+        if not lines:
+            yield from pd.DataFrame(columns=self.columns) >> tag >> self.out
+            return
+
+        ls = pd.Series(lines).str.split(self.seperator)
+
+        tails = ls.str.len() > len(self.columns)
+        if tails.any():
+            yield from ls[tails].str[len(self.columns):] >> tag >> self.tails
+
+        data = pd.DataFrame.from_items([
+                (col, ls.str.get(i)) for i,col in enumerate(self.columns)])
+        yield from data >> tag >> self.out
+
+
+class Fill(Paramed, Unit):
+    @param
+    def fills(self, val={}):
+        return val
+
+    @outport 
+    def out(): pass
+
+    @inport
+    def ins(self, data, tag):
+        for col, fill in self.fills.items():
+            data.loc[~data[col].apply(bool),col] = fill
+
+        yield from data >> tag >> self.out
+
+
+class Convert(Paramed, Unit):
+    @param
+    def convs(self, val={}):
+        return {col: conv if isinstance(conv, list) else [conv] for col, conv in val.items()}
+
+    @outport 
+    def out(): pass
+
+    @inport
+    def ins(self, data, tag):
+        for col, convs in self.convs.items():
+            sel = data[col]
+            for conv in convs:
+                sel = sel.astype(conv)
+            data[col] = sel
+
+        yield from data >> tag >> self.out
+
 
 class IndexContinued(Unit):
     @outport

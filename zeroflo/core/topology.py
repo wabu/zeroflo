@@ -1,401 +1,306 @@
-"""
-Toplology of a Flow
--------------------
+from collections import defaultdict
 
-Vertically there's a clear one to n hierachy, starting with the flow context,
-having multiple process spaces, each consisting of Units that may have multiple
-in- and outports.
+from pyadds import observe
+from pyadds.annotate import delayed
 
-Horizontally we have the actual flow network with arbitrary wiring of ports,
-build by a link between an inport and an outport.
+from .idd import Idd, Id
 
-```
- Context
-  | 1
-  |
-  | n
- Space
-  | 1
-  |
-  | n
- Unit
-  | 1
-  |
-  | n
- Port  :::::> Link :::::> Port
-       1    n      n    1
-```
+class Unit(Idd):
+    """ topology info of a unit """
 
-The Topology object has methods to setup and query this structure.
-"""
-from .util import IddPath, Path
-from .annotate import local, shared
-from .port import inport, outport, OutPort, InPort
-from .exec import Executor
-from . import context, sugar
+    __by__ = 'space'
 
-from collections import defaultdict, namedtuple
-
-import asyncio
-import aiozmq
-
-import logging
-logger = logging.getLogger(__name__)
-
-class Context(IddPath):
-    __ref__ = 'ctx'
-    __master__ = True
-
-    def __init__(self, name=None, setup=None):
-        super().__init__(name=name)
-        self.setup = setup
-        setup()
-
-    @local
-    def loop(self):
-        asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
-        return asyncio.get_event_loop()
-
-    @shared
-    def top(self):
-        return Topology(self)
-
-    @shared
-    def exec(self):
-        return Executor(self)
-
-    @asyncio.coroutine
-    def aquire(self, num=1):
-        yield from self.exec.track.aquire(num)
-
-    @asyncio.coroutine
-    def release(self, num=1):
-        yield from self.exec.track.release(num)
-
-    def __getattr__(self, name):
-        return getattr(self.top, name)
-
-
-class Flows(IddPath):
-    """ flow object base """
-    __ref__ = 'unit'
-    __by__ = ['space', ...]
-
-    def __init__(self, ins, outs, ctx=None, name=None, ref=None):
-        # XXX improve and abstract name inference
-        name = name or type(ref).__name__
-        super().__init__(name=name)
-
-        if ctx is None:
-            ctx = context.get_current_context()
-
-        self.ctx = ctx
-        self.ins = ins
-        self.outs = outs
-        self.ref = ref
-        ctx.register(self)
-
-    @local
-    def inports(self):
-        return [getattr(self.ref, p) for p in self.ins]
-
-    @local
-    def outports(self):
-        return [getattr(self.ref, p) for p in self.outs]
-
-    @local
-    def space(self):
-        return self.ctx.get_space(self)
-
-class UnitRef(Flows):
-    """ unit based on flow object with @inport and @outport definitions  """
-    def __init__(self, flobj, **kws):
-        ins = [p.name for p in inport.iter(flobj)]
-        outs = [p.name for p in outport.iter(flobj)]
-        super().__init__(ins=ins, outs=outs, ref=flobj, **kws)
-
-    @asyncio.coroutine
-    def setup(self):
-        yield from self.ref.__setup__()
-
-    @asyncio.coroutine
-    def teardown(self):
-        yield from self.ref.__teardown__()
-
-class Unit(sugar.UnitSugar):
-    """ definition of a flow unit """
-    def __init__(self, *args, name=None, ctx=None, **kws):
-        super().__init__(*args, **kws)
-
-        self.__fl__ = UnitRef(self, name=name, ctx=ctx)
-        self.__ctx__ = self.__fl__.ctx
-
-    @asyncio.coroutine
-    def __setup__(self):
-        pass
-
-    @asyncio.coroutine
-    def __teardown__(self):
-        pass
-
-
-class Space(IddPath):
-    __ref__ = 'space'
-    __by__ = ['ctx', ...]
-
-    def __init__(self, units, ctx, name=None):
-        super().__init__(name=name)
-        self.ctx = ctx
-        self.units = units
-        self.replicate = 0
-
-    @shared
-    def is_setup(self):
-        return False
-
-    @local
-    def is_local(self):
-        return False
-
-    @local
-    def inports(self):
-        return {p for unit in self.units for p in unit.inports}
-
-    @local
-    def outports(self):
-        return {p for unit in self.units for p in unit.outports}
-
-    @local
-    def incomming(self):
-        return {l for ins in self.inports for l in ins.links}
-
-    @local
-    def outgoing(self):
-        return {l for ins in self.outports for l in ins.links}
+    def __init__(self, space, hints=None, **kws):
+        super().__init__(**kws)
+        self.space = space
+        self.hints = hints or hints
+        self.active = False
 
     def __str__(self):
-        base = super().__str__() 
-        if self.replicate:
-            base += '**{}'.format(self.replicate)
-        return '{}{{{}}}'.format(base, '&'.join(map(str, self.units)))
+        return str(self.id)
 
     def __repr__(self):
-        base = super().__repr__() 
-        if self.replicate:
-            base += '**{}'.format(self.replicate)
-        return '{}{{{}}}'.format(base, '&'.join(map(repr, self.units)))
+        return repr(self.id)
+
+
+class Space(Idd):
+    __by__ = 'tp'
+    """ topology info for a space, combining units in one process """
+    def __init__(self, tp, units=None, pars=None, **kws):
+        super().__init__(**kws)
+        self.tp = tp
+        self.units = units or []
+        self.pars = pars or set()
+        self.bound = False
+
+    def __str__(self):
+        return '{{{}}}'.format(','.join(map(str, self.units)))
+
+    def __repr__(self):
+        return '{}@{!r}'.format(self, self.id)
+
+
+class Port(Idd):
+    """ topology info for a port """
+
+    __by__ = 'unit', 'port'
+
+    def __init__(self, unit, port, links=None, hints=None, **kws):
+        super().__init__(**kws)
+        self.unit = unit
+        self.port = port
+        self.links = links or []
+        self.hints = hints or {}
+
+    @property
+    def pid(self):
+        return self.id.idd
+
+    def of(self, unit):
+        assert unit.tp == self.unit
+        return getattr(unit, self.port)
+
+    def __str__(self):
+        return '{}.{}'.format(self.unit, self.port)
+
+    def __repr__(self):
+        return '{!r}.{}'.format(self.unit, self.port)
 
 
 class Link:
-    def __init__(self, ctx, source, target, options):
-        self.ctx = ctx
+    """ topology info for a link """
+    def __init__(self, source, target, hints=None, **kws):
+        super().__init__(**kws)
         self.source = source
         self.target = target
-        self.options = options
+        self.hints = hints or {}
 
-    @local
-    def sync(self):
-        sync = self.target.sync
-        return Path(*(self.ctx.path.ids + sync.target(self.target.path) 
-                    + sync.source(self.source.path)))
+    @delayed
+    def endpoint(self):
+        return self.target.hints['sync'](self.source, self.target)
+
+    @delayed
+    def kind(self):
+        if self.target.unit.space == self.source.unit.space:
+            return 'local'
+        else:
+            return 'par'
 
     def __str__(self):
         return '{}>>{}'.format(self.source, self.target)
 
     def __repr__(self):
-        return '{}>>{}//{}'.format(repr(self.source), repr(self.target), self.options)
-    
+        return '{!r}>>{!r}'.format(self.source, self.target)
 
-class Topology:
-    def __init__(self, ctx):
-        self.ctx = ctx
+
+class Topology(observe.Observable, Idd):
+    """ the flow topology object """
+    def __init__(self, name='ctx', **kws):
+        super().__init__(name=name, **kws)
+
         self.units = {}
-        self.replicates = {}
-        self.unions = []
-        self.dists = []
-        self.local = set()
+        self.spaces = []
 
-        self.outs = defaultdict(list)
-        self.ins = defaultdict(list)
+        self.ports = defaultdict(lambda: defaultdict(dict))
+        self.links = []
     
-    def register(self, unit):
-        self.units[unit.id] = unit
+        self.outlinks = defaultdict(lambda: defaultdict(list))
+        self.inlinks = defaultdict(lambda: defaultdict(list))
 
-    def put_local(self, unit):
-        self.local.add(unit)
+    @observe.emitting
+    def register(self, unit, **hints):
+        """ register unit inside topology """
+        s = Space(self)
+        u = Unit(space=s, name=unit.name, hints=hints)
 
-    def lookup(self, uid):
-        return self.units[uid]
+        s.units.append(u)
+        self.spaces.append(s)
 
-    def _check_restrictions(self, unions, dists):
-        for ds in dists:
-            for us in unions:
-                du = ds.intersection(us)
-                if len(du) > 1:
-                    raise ValueError(
-                        "Following units are requested to "
-                        "be unified and distributed:\n%s" 
-                        % du)
+        self.units[u.id] = u
+        unit.id = u.id
 
-        for u1 in unions:
-            for u2 in unions:
-                if u1 == u2:
-                    continue
-                us = u1.intersection(u2)
-                if us:
-                    raise ValueError(
-                        "Following units are requested to "
-                        "be in two unions:\n%s"
-                        % us)
-        return self
+        for port in unit.ports:
+            self.get_port(port)
+        return u
 
-    def unify(self, *units):
-        units = set(units)
-        logger.info('TOP:unify %s [%r]', units, self.ctx)
-        unions = []
-        for us in self.unions:
-            if us.intersection(units):
-                units.update(us)
-            else:
-                unions.append(us)
-        unions.append(units)
-        logger.debug('TOP.unions %s [%r]', unions, self.ctx)
+    @observe.emitting
+    def join(self, s1, s2):
+        """ join to spaces together """
+        if s2 in s1.pars:
+            raise ValueError("can't join spaces becaue they are already parted")
 
-        self._check_restrictions(unions, self.dists)
-        self.unions = unions
+        for u in s2.units:
+            u.space = s1
+            s1.units.append(u)
+        #s2.units.clear()
+        self.spaces.remove(s2)
 
-    def distribute(self, *units):
-        units = set(units)
-        logger.info('TOP:distribute %s [%r]', units, self.ctx)
-        dists = []
-        for ds in self.dists:
-            inter = ds.intersection(units) 
-            if inter == ds:
-                ds.update(units)
-            else:
-                dists.append(ds)
-        dists.append(units)
-        logger.debug('TOP.dists %s [%r]', dists, self.ctx)
+        for sp in s2.pars:
+            sp.pars.remove(s2)
+            sp.pars.add(s1)
+        s1.pars.update(s2.pars)
+        s2.pars.clear()
+        return s1
 
-        self._check_restrictions(self.unions, dists)
-        self.dists = dists
+    @observe.emitting
+    def par(self, s1, s2):
+        """ set two spaces apart """
+        if s1 == s2:
+            raise ValueError("can't part spaces because they are already joined")
+        s1.pars.add(s2)
+        s2.pars.add(s1)
 
-    def replicate(self, units, num):
-        logger.info('TOP.replicate %s %d [%r]', units, num, self.ctx)
-        # TODO check replicates
-        self.replicates.update({unit.id: num for unit in units})
+    @observe.emitting
+    def add_link(self, source, target, **hints):
+        """ adds links between source and target port """
+        src = self.get_port(source)
+        tgt = self.get_port(target)
 
+        link = Link(src, tgt, hints)
+        src.links.append(link)
+        tgt.links.append(link)
+        self.links.append(link)
 
-    def complete(self, units):
+        ep = link.endpoint
+
+        self.outlinks[src][tgt].append(link)
+        self.inlinks[tgt][src].append(link)
+        return link
+
+    @observe.emitting
+    def remove_links(self, source, target):
+        """ removes links between source and target port """
+        src = self.get_port(source)
+        tgt = self.get_port(target)
+
+        outs = self.outlinks[src].pop(tgt)
+        ins = self.inlinks[tgt].pop(src)
+
+        assert outs == ins
+
+        for link in outs:
+            src.links.remove(link)
+            tgt.links.remove(link)
+        return links
+
+    def lookup(self, unit):
+        """ lookup topology of a unit """
+        if not isinstance(unit, Id):
+            unit = unit.id
+        return self.units[unit]
+
+    def get_port(self, port):
+        """ get topology info of a port """
+        uid = port.__self__.id
+        unit = self.units[uid]
+        name = port.__name__
+        kind = port.__kind__
+        try:
+            return self.ports[unit][kind][name]
+        except KeyError:
+            self.ports[unit][kind][name] = Port(unit, name, [], port.hints)
+
+    def ports_of(self, unit, kind=None):
+        ports = self.ports[self.lookup(unit)]
+        if kind:
+            return list(ports[kind].values())
+        else:
+            return [p for ps in ports.values() for p in ps.values()]
+
+    def __getitem__(self, ref):
+        try:
+            return self.lookup(ref)
+        except KeyError:
+            pass
+
+        try:
+            return self.get_port(ref)
+        except (AttributeError, KeyError):
+            pass
+
+    def links_for(self, ref=None, kind=None):
         """
-        completes the set of unified units for a space
-         
-        if a unit is not restricted to be inside this space and has incomming
-        connections from this space, just put it here.
-        """
-        done = set()
-        others = [union for union in self.unions if union != units]
-        while done != units:
-            for unit in units.difference(done):
-                done.add(unit)
-                for out in unit.outports:
-                  for lnk in self.outs[out.id]:
-                    tgt = lnk.target.unit
-                    if tgt in units:
-                        continue
-                    logger.debug('TOP?complete %s->%s:%s', unit, tgt, units)
-                    try:
-                        self._check_restrictions(others + [units.union({tgt})], self.dists)
-                    except ValueError:
-                        continue
-                    logger.info('TOP+complete %s->%s:%s', unit, tgt, units)
-                    units.update({tgt})
-        return units
-
-    @shared
-    def spaces(self):
-        spaces = set()
-        rest = set(self.units.values())
-
-        def mk_space(units):
-            logger.debug('TOP:mk-space %s [%r]', units, self.ctx)
-            space = Space(units, self.ctx)
-            spaces.add(space)
-            rest.difference_update(units)
-            for unit in units:
-                repl = self.replicates.get(unit.id, 0)
-                if repl:
-                    space.replicate = repl
-            return space
-
-        for us in self.unions:
-            us = self.complete(us)
-            mk_space(us)
-
-        # XXX prefare more local spaces ...
-        for ds in self.dists:
-            for unit in ds:
-                if unit in rest:
-                    mk_space({unit})
+        Parameters
+        ----------
+        ref : <tp>, default None
+            any topologial reference object (space, unit, port)
             
-        if rest:
-            mk_space(set(rest))
+        kind : {None, 'source', 'target'}, default None
+            kink of the link or None
+        """
+        if ref is None:
+            return set(self.links)
+        ref = self[ref] or ref
 
-        for space in spaces:
-            logger.info('TOP.space %r', space)
+        if kind == None:
+            kinds = ['source', 'target']
+        else:
+            kinds = [kind]
 
-        return spaces
+        links=set()
+        for l in self.links:
+            for k in kinds:
+                port = getattr(l, k)
+                if (port == ref or
+                    port.unit == ref or
+                    port.unit.space == ref):
+                    links.add(l)
+        return links
 
-    def get_space(self, unit):
+    def endpoints(self, ref=None, kind=None):
+        eps = defaultdict(list)
+        for l in self.links_for(ref, kind=kind):
+            eps[l.endpoint].append(l)
+        return eps
+
+    def autojoin_spaces(self, unit):
+        if unit.space.bound:
+            return
+
+        bound = set()
+        unbound = set()
+        for l in self.links_to(unit):
+            space = l.source.unit.space
+            (bound if space.bound else unbound).add(space)
+
+        if len(bound) == 1:
+            master, = bound
+        else:
+            master = unit.space
+
+        for space in unbound:
+            if space not in master.pars:
+                self.join(master, space)
+
+    def links_from(self, ref):
+        return self.links_for(ref, kind='source')
+
+    def links_to(self, ref):
+        return self.links_for(ref, kind='target')
+
+    def points_from(self, ref):
+        return self.endpoints(ref, kind='source')
+
+    def points_to(self, ref):
+        return self.endpoints(ref, kind='target')
+
+    def __repr__(self):
+        items=[]
         for space in self.spaces:
-            if unit in space.units:
-                return space
+            its = []
+            its.append('{!r}:'.format(space))
+            for unit in space.units:
+                ins = self.links_to(unit)
+                outs = self.links_from(unit)
 
-        raise ValueError("no space for %s" % (unit,))
+                its.append('  {!r}:'.format(unit))
+                its.extend(['    {} << {!r}'.format(p.target.port, p.source) 
+                            for p in ins])
+                its.extend(['    {} >> {!r}'.format(p.source.port, p.target) 
+                            for p in outs])
+            items.append(its)
 
-    def infer_kind(self, link):
-        if 'kind' in link.options:
-            return link.options['kind']
+        return '\n\n'.join('\n'.join(its) for its in items)
+                
 
-        pair = {link.source.unit, link.target.unit}
-        srcs = link.source.unit.space.units
-        if pair.intersection(srcs) == pair:
-            return 'local'
-
-        if link.target.unit.space.replicate:
-            return 'replicate'
-
-        return 'distribute'
-
-
-    def link(self, source, target, **opts):
-        if not (isinstance(source, OutPort) and isinstance(target, InPort)):
-            raise NotImplementedError("You can only link outports to inports")
-        logger.info('TOP.link %s >> %s // %s [%r]', source, target, opts, self.ctx)
-        link = Link(self.ctx, source, target, opts)
-        self.outs[source.id].append(link)
-        self.ins[target.id].append(link)
-        return target.unit.ref
-
-    def get_port(self, pid):
-        uid, name = pid.id
-        unit = self.lookup(uid)
-        return getattr(unit.ref, name)
-
-    def links_from(self, src):
-        links = []
-        for link in self.outs[src]:
-            link.options['kind'] = self.infer_kind(link)
-            links.append(link)
-            logger.info('TOP:links-from %r [%r]', link, self.ctx)
-        return links
-
-    def links_to(self, tgt):
-        logger.debug('TOP.links-to %r [%r]', tgt, self.ctx)
-        links = []
-        for link in self.ins[tgt]:
-            link.options['kind'] = self.infer_kind(link)
-            links.append(link)
-            logger.info('TOP:links-to %r [%r]', link, self.ctx)
-        return links
 

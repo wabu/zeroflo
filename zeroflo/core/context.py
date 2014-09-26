@@ -1,33 +1,47 @@
 from contextlib import contextmanager
+from .idd import *
+from .topology import Topology
+from .control import Control
 
-_ctx = None
+class Context(Idd):
+    def __init__(self, name=None):
+        super().__init__(name=name)
+
+    @cached
+    def tp(self):
+        return Topology()
+
+    @cached
+    def ctrl(self):
+        return Control(ctx=self, tp=self.tp)
+
+    def register(self, unit):
+        self.tp.register(unit)
+        self.ctrl.register(unit)
+
+__context__ = None
 
 def get_current_context():
-    if _ctx is None:
+    if __context__ is None:
         raise ValueError("No current context, "
                 "use the `flo.context(...)` context manaanger before creating "
                 "flow units or pass a ctx to the unit constructor.")
-    return _ctx
-
-def get_object_context(obj):
-    try:
-        return obj.__ctx__
-    except AttributeError:
-        ctx = get_current_context()
-        obj.__ctx__ = ctx
-        return ctx
+    return __context__
 
 
 @contextmanager
 def context(ctx=None, *args, **kws):
-    from .topology import Context
-    global _ctx
+    global __context__
 
-    old = _ctx
+    if __context__:
+        raise ValueError("Another flow context is already active")
+
     if not isinstance(ctx, Context):
         ctx = Context(name=ctx, *args, **kws)
-    _ctx = ctx
+
     try:
-        yield ctx
+        __context__ = ctx
+        yield __context__
     finally:
-        _ctx = old
+        __context__ = None
+
