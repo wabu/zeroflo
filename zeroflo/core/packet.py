@@ -10,7 +10,7 @@ class Packet(namedtuple('Packet', 'data tag')):
 
     def _data_hash(self):
         try:
-            return hash(self.data)
+            return hex(hash(self.data))
         except:
             return None
 
@@ -21,8 +21,8 @@ class Packet(namedtuple('Packet', 'data tag')):
             return None
         else:
             def ns(a): return '' if a is None else a
-            return '{}:{}:{:x}'.format(
-                    type(self.data).__name__, ns(l),ns(h))
+            return '{}:{}:{}'.format(
+                    type(self.data).__name__, ns(l), ns(h))
 
     def __str__(self):
         ds = self._data_str()
@@ -40,7 +40,7 @@ class Packet(namedtuple('Packet', 'data tag')):
 
 
     def __rshift__(self, port):
-        return (yield from port.handle(self))
+        return (yield from port.handle(port, self))
 
     
 class Tag(dict):

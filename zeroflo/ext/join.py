@@ -4,6 +4,7 @@ join with the main thread
 from ..core import *
 
 from functools import wraps
+from pyadds.annotate import delayed
 
 class Join(Unit):
     @delayed

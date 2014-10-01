@@ -1,4 +1,4 @@
-from ..core import Unit, outport, inport, coroutine, withloop
+from ..core import Unit, outport, inport, coroutine
 from ..ext import param, Paramed
 from ..flows.tools import Collect
 

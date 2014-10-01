@@ -124,8 +124,7 @@ class Collect(Paramed, Unit):
         pass
 
     @coroutine
-    @withloop
-    def __setup__(self, loop=None):
+    def __setup__(self):
         self.queues = {}
 
     @coroutine
@@ -136,8 +135,8 @@ class Collect(Paramed, Unit):
         return sum(datas, [])
 
     @coroutine
-    @withctx
-    def pusher(self, q, ctx):
+    def pusher(self, q):
+        ctx = self.ctx
         datas = []
         timeout = self.timeout
         length = self.length
@@ -193,9 +192,9 @@ class Collect(Paramed, Unit):
                 break
 
     @inport
-    @withctx
-    def ins(self, data, tag, ctx=None):
-        yield from ctx.aquire()
+    def ins(self, data, tag):
+        #ctx = self.ctx
+        #yield from ctx.aquire()
 
         by = tag.get(self.collectby)
         try:

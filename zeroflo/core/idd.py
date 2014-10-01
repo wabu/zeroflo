@@ -5,6 +5,8 @@ from collections import namedtuple
 from pathlib import Path
 from os.path import join as join_path
 
+import traceback
+
 class Id(namedtuple('IdBase', 'name, idd')):
     def __str__(self):
         return self.name
@@ -71,6 +73,10 @@ class IdPath(namedtuple('IdPathBase', 'refs, ids')):
         except ValueError:
             return super().__getitem__(item)
 
+    def sub(self, start=None, stop=None):
+        return IdPath(self.refs[start:stop], self.ids[start:stop])
+
+
     def __add__(self, other):
         if not isinstance(other, IdPath):
             return NotImplemented
@@ -135,7 +141,7 @@ class Idd:
         return hash(self.id.idd)
 
     def __eq__(self, other):
-        if isinstance(other, Idd):
+        if isinstance(other, Idd): 
             return self.id.idd == other.id.idd
         else:
             return NotImplemented

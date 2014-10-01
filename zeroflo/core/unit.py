@@ -6,9 +6,13 @@ from asyncio import coroutine
 from pyadds.annotate import cached, delayed, Conotate
 from pyadds.str import name_of
 
-from .context import get_current_context, context
+from .ctx import get_current_context, context
 from .idd import IdPath
 from .packet import Tag
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Unit:
     """
@@ -18,9 +22,13 @@ class Unit:
         if ctx is None:
             ctx = get_current_context()
 
-        self.name = name or name_of(self)
         self.ctx = ctx
-        self.ctx.register(self)
+        self.name = name or name_of(self)
+        ctx.register(self)
+
+    @delayed
+    def ctx(self):
+        raise ValueError
 
     @cached
     def tp(self):
@@ -55,16 +63,40 @@ class Unit:
         """outgoing links"""
         return list(chain.from_iterable(p.links for p in self.outports))
 
+    def __or__(self, other):
+        self.ctx.tp.par(self.tp.space, other.tp.space)
+        return other
+
+    def __and__(self, other):
+        self.ctx.tp.join(self.tp.space, other.tp.space)
+        return other
+
+    def __rshift__(self, other):
+        self.out >> other
+        return other
+
+    def __rrshift__(self, other):
+        other >> self.ins
+        return self
+
+    def __str__(self):
+        return str(self.tp)
+
+    def __repr__(self):
+        return repr(self.tp)
+
 
 class Sync(namedtuple('Sync', 'target, source')):
     def __call__(self, source, target):
-        out = self.source(source.path).prefixed('out-')
-        ins = self.target(target.path).prefixed('in-')
-        return out+ins
+        sy = lambda x: getattr(Syncs, x)
+        out = sy(self.source)(source.path).prefixed('out-')
+        ins = sy(self.target)(target.path).prefixed('in-')
+        return out+ins.sub(1,)
 
 class Syncs:
     """ port syncronization types"""
     def syncer(*args):
+        path = None
         def sync(path):
             ids = tuple(path[s] for s in args if path[s])
             return IdPath(args, ids)
@@ -74,7 +106,7 @@ class Syncs:
     any = syncer('topology')
     space = syncer('topology', 'space')
     unit = syncer('topology', 'space', 'unit')
-    port = syncer('topology', 'space', 'unit', 'name')
+    port = syncer('topology', 'space', 'unit', 'port')
 
 
 class Port:
@@ -104,7 +136,7 @@ class Port:
         print('running {!r} >> {!r}'.format(packet, self))
 
         yield from self.ctx.ctrl.activate(self.unit)
-        yield from self.handle(*packet)
+        yield from self.ctx.ctrl.handle(self, packet)
 
     @property
     def __self__(self):
@@ -130,6 +162,12 @@ class Port:
     def __repr__(self):
         return repr(self.tp)
 
+    def __rshift__(self, other):
+        if not isinstance(other, Port):
+            return NotImplemented
+        self.ctx.tp.add_link(self, other)
+        return other
+
 
 class InPort(Port):
     __kind__ = 'target'
@@ -137,7 +175,6 @@ class InPort(Port):
     @cached
     def handle(self):
         return self.method
-            
 
 class OutPort(Port):
     __kind__ = 'source'
@@ -146,14 +183,14 @@ class OutPort(Port):
     def channels(self):
         return []
 
-    @cached
-    def handle(self):
-        return self.ctx.ctrl.local.handler(self.tp.pid)
+    @coroutine
+    def handle(self, packet):
+        logger.debug('no handler on %s for  %s', self, packet)
 
 
 class unbound(Conotate, cached):
     __port__ = None
-    hints = {'sync': Sync(Syncs.unit, Syncs.any)}
+    hints = {'sync': Sync('unit', 'any')}
 
     def __default__(self, unit):
         return self.__port__(unit, self.name, self.definition, **self.hints)
@@ -167,8 +204,7 @@ class outport(unbound):
 
 def sync(target='unit', source='any'):
     def annotate(port):
-        sy = lambda x: getattr(Sync, x)
-        port.hints['sync'] = Sync(sy(traget), sy(source))
+        port.hints['sync'] = Sync(target, source)
         return port
     return annotate
 

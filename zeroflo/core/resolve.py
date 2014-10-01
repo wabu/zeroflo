@@ -5,6 +5,22 @@ from asyncio import coroutine
 
 from .links import linkers
 
+import logging
+logger = logging.getLogger(__name__)
+
+
+class Defaults(dict):
+    def __init__(self, mk, *args, **kws):
+        super().__init__(*args, **kws)
+        self.mk = mk
+
+    def __getitem__(self, item):
+        try: 
+            return super().__getitem__(item)
+        except KeyError:
+            result = self[item] = self.mk(item)
+            return result
+
 
 class Resolver:
     __site__ = None
@@ -16,15 +32,7 @@ class Resolver:
 
     @classmethod
     def defaults(cls):
-        # TODO use only one dict
-        class Defaults(dict):
-            def __getitem__(self, item):
-                try: 
-                    return super().__getitem__(item)
-                except KeyError:
-                    result = self[item] = cls(item)
-                    return result
-        return Defaults()
+        return Defaults(cls)
 
     @coroutine
     def register(self, unit, link):
@@ -42,11 +50,13 @@ class Resolver:
 
     @coroutine
     def activate_chan(self, kind, chan):
+        logger.debug('dispatch activates %s for %s::%s', 'chan', self.endpoint, kind)
         yield from chan.setup()
 
     @coroutine
     def close_chan(self, kind, chan):
-        yield from chan.setup()
+        logger.debug('close %s for %s::%s', 'chan', self.endpoint, kind)
+        yield from chan.close()
 
     @coroutine
     def activate(self, link):
@@ -82,6 +92,7 @@ class Receiver(Resolver):
 
     @coroutine
     def activate_chan(self, kind, chan):
+        logger.debug('receiver activates %s for %s::%s', 'chan', self.endpoint, kind)
         yield from super().activate_chan(kind, chan)
         if not self.loops:
             assert not self.main
@@ -100,6 +111,7 @@ class Receiver(Resolver):
         
     @coroutine
     def loop(self, chan):
+        logger.debug('looping %s: %s', self.endpoint, chan)
         fetch = chan.fetch
         put = self.queue.put
         while True:
@@ -108,6 +120,7 @@ class Receiver(Resolver):
 
     @coroutine
     def run(self):
+        logger.debug('running %s', self.endpoint)
         get = self.queue.get
         prts = self.portmap
         while True:

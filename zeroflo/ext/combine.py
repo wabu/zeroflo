@@ -25,8 +25,8 @@ import inspect
 import asyncio
 from asyncio import coroutine
 from functools import wraps
-from ..core.exec import Tag
-from ..core.annotate import Annotate, ObjDescr, Get
+from ..core.packet import Tag
+from pyadds.annotate import Annotate, ObjDescr, Get
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class Combiner:
         self.definition = coroutine(f)
         self.name = f.__name__
         self.obj = obj
-        self.loop = obj.__ctx__.loop
+        self.loop = obj.ctx.loop
         self.slots = {k: asyncio.Event(loop=self.loop) for k in spec.args[1:-1]}
         for slot in self.slots.values():
             slot.set()

@@ -82,7 +82,7 @@ class Print(flo.Unit):
 
 def setup_logging():
     logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
-    logging.getLogger('zeroflo').setLevel("INFO")
+    logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('examples').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         add.out >> prt.ins
 
         # specifiy distribution
-        add | lag & prt
+        add & lag & prt
 
     # simple call to trigger flow
     add.out(0)

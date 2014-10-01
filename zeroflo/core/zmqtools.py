@@ -105,7 +105,7 @@ class ZmqStream:
     @coroutine
     def write(self, *datas, **kws):
         """write a multipart message"""
-        #logger.debug('%s writes %s', self, [len(p) for p in datas])
+        logger.debug('%s writes %s', self, [len(p) for p in datas])
         yield from self._pr._writing.wait()
         logger.debug('%s writing', self)
         self._tr.write(datas, **kws)
@@ -132,7 +132,10 @@ class ZmqStream:
     def __str__(self):
         binds = list(self.bindings())
         conns = list(self.connections())
-        return str((binds+conns)[0])
+        if conns or binds:
+            return str((binds+conns)[0])
+        else:
+            return 'unbound zmq stream'
 
     def __repr__(self):
         binds = list(self.bindings())

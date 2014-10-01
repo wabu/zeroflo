@@ -1,8 +1,8 @@
 """
 parameter handling for flow units ...
 """
-from ..core.annotate import *
-from ..core.port import inport
+from pyadds.annotate import *
+from ..core.unit import inport
 
 import logging
 logger = logging.getLogger(__name__)

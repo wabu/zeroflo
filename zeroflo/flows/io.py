@@ -1,4 +1,4 @@
-from ..core import asyncio, withloop, Unit, inport, outport, coroutine
+from ..core import asyncio, Unit, inport, outport, coroutine
 from ..ext import param, Paramed
 
 from pathlib import Path
@@ -106,10 +106,9 @@ class Reader(Paramed, Unit):
 
 class PBzReader(Reader):
     @coroutine
-    @withloop
-    def open(self, filename, loop=None):
+    def open(self, filename):
         pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
-                stdout=asyncio.subprocess.PIPE, loop=loop)
+                stdout=asyncio.subprocess.PIPE, loop=self.ctx.loop)
 
         @contextmanager
         def closing():

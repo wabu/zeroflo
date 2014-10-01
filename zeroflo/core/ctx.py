@@ -3,13 +3,22 @@ from .idd import *
 from .topology import Topology
 from .control import Control
 
-class Context(Idd):
-    def __init__(self, name=None):
-        super().__init__(name=name)
+import asyncio
+
+class Context:
+    def __init__(self, name=None, setup=None):
+        self.name = name
+        self.setup = setup
+        if setup:
+            setup()
+
+    @delayed
+    def tp(self):
+        return Topology(name=self.name)
 
     @cached
-    def tp(self):
-        return Topology()
+    def loop(self):
+        return asyncio.get_event_loop()
 
     @cached
     def ctrl(self):

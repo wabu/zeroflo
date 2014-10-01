@@ -19,6 +19,8 @@ def linker(kind):
     return annotate
 
 class Chan:
+    __show__ = '??'
+
     @coroutine
     def setup(self):
         pass
@@ -27,13 +29,16 @@ class Chan:
     def close(self):
         pass
 
-
 class InChan(Chan):
+    __show__ = '<<'
+
     @coroutine
     def fetch(self):
         raise NotImplementedError
 
 class OutChan(Chan):
+    __show__ = '>>'
+
     @coroutine
     def deliver(self, pid, packet):
         raise NotImplementedError
@@ -58,16 +63,24 @@ class LocalLinker(Linker):
 
     @coroutine
     def mk_in(self, endpoint):
-        return LocalIn(self.get_q(endpoint))
+        return LocalIn(endpoint, self.get_q(endpoint))
 
     @coroutine
     def mk_out(self, endpoint):
-        return LocalOut(self.get_q(endpoint))
+        return LocalOut(endpoint, self.get_q(endpoint))
 
 
 class LocalChan(Chan):
-    def __init__(self, q):
+    def __init__(self, endpoint, q):
+        self.endpoint = endpoint
         self.queue = q
+
+    def __str__(self):
+        return '{}{}'.format(self.__show__, self.endpoint)
+
+    def __repr__(self):
+        return '{}{}(!{:x})'.format(self.__show__, self.endpoint, id(self.queue))
+
 
 class LocalIn(InChan, LocalChan):
     @cached
@@ -110,6 +123,12 @@ class ZmqChan(Chan):
         yield from getattr(stream, how)(addr)
         self.stream = stream
         return self
+
+    def __str__(self):
+        return '{}{}'.format(self.__show__, self.endpoint)
+
+    def __repr__(self):
+        return '{}{}(!{:x})'.format(self.__show__, self.endpoint, id(self.queue))
 
 
 class ZmqIn(InChan, ZmqChan):

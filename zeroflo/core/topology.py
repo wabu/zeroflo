@@ -92,6 +92,11 @@ class Link:
     def __repr__(self):
         return '{!r}>>{!r}'.format(self.source, self.target)
 
+def ddict():
+    return defaultdict(dict)
+
+def dlist():
+    return defaultdict(list)
 
 class Topology(observe.Observable, Idd):
     """ the flow topology object """
@@ -101,11 +106,11 @@ class Topology(observe.Observable, Idd):
         self.units = {}
         self.spaces = []
 
-        self.ports = defaultdict(lambda: defaultdict(dict))
+        self.ports = defaultdict(ddict)
         self.links = []
     
-        self.outlinks = defaultdict(lambda: defaultdict(list))
-        self.inlinks = defaultdict(lambda: defaultdict(list))
+        self.outlinks = defaultdict(dlist)
+        self.inlinks = defaultdict(dlist)
 
     @observe.emitting
     def register(self, unit, **hints):
@@ -116,7 +121,7 @@ class Topology(observe.Observable, Idd):
         s.units.append(u)
         self.spaces.append(s)
 
-        self.units[u.id] = u
+        self.units[u.id.idd] = u
         unit.id = u.id
 
         for port in unit.ports:
@@ -126,7 +131,7 @@ class Topology(observe.Observable, Idd):
     @observe.emitting
     def join(self, s1, s2):
         """ join to spaces together """
-        if s2 in s1.pars:
+        if s2.id.idd in s1.pars:
             raise ValueError("can't join spaces becaue they are already parted")
 
         for u in s2.units:
@@ -135,9 +140,9 @@ class Topology(observe.Observable, Idd):
         #s2.units.clear()
         self.spaces.remove(s2)
 
-        for sp in s2.pars:
-            sp.pars.remove(s2)
-            sp.pars.add(s1)
+        for sp.id.idd in s2.pars:
+            sp.pars.remove(s2.id.idd)
+            sp.pars.add(s1.id.idd)
         s1.pars.update(s2.pars)
         s2.pars.clear()
         return s1
@@ -147,8 +152,8 @@ class Topology(observe.Observable, Idd):
         """ set two spaces apart """
         if s1 == s2:
             raise ValueError("can't part spaces because they are already joined")
-        s1.pars.add(s2)
-        s2.pars.add(s1)
+        s1.pars.add(s2.id.idd)
+        s2.pars.add(s1.id.idd)
 
     @observe.emitting
     def add_link(self, source, target, **hints):
@@ -163,8 +168,8 @@ class Topology(observe.Observable, Idd):
 
         ep = link.endpoint
 
-        self.outlinks[src][tgt].append(link)
-        self.inlinks[tgt][src].append(link)
+        self.outlinks[src.id.idd][tgt.id.idd].append(link)
+        self.inlinks[tgt.id.idd][src.id.idd].append(link)
         return link
 
     @observe.emitting
@@ -173,8 +178,8 @@ class Topology(observe.Observable, Idd):
         src = self.get_port(source)
         tgt = self.get_port(target)
 
-        outs = self.outlinks[src].pop(tgt)
-        ins = self.inlinks[tgt].pop(src)
+        outs = self.outlinks[src.id.idd].pop(tgt)
+        ins = self.inlinks[tgt.id.idd].pop(src)
 
         assert outs == ins
 
@@ -187,21 +192,21 @@ class Topology(observe.Observable, Idd):
         """ lookup topology of a unit """
         if not isinstance(unit, Id):
             unit = unit.id
-        return self.units[unit]
+        return self.units[unit.idd]
 
     def get_port(self, port):
         """ get topology info of a port """
-        uid = port.__self__.id
+        uid = port.__self__.id.idd
         unit = self.units[uid]
         name = port.__name__
         kind = port.__kind__
         try:
-            return self.ports[unit][kind][name]
+            return self.ports[unit.id.idd][kind][name]
         except KeyError:
-            self.ports[unit][kind][name] = Port(unit, name, [], port.hints)
+            self.ports[unit.id.idd][kind][name] = Port(unit, name, [], port.hints)
 
     def ports_of(self, unit, kind=None):
-        ports = self.ports[self.lookup(unit)]
+        ports = self.ports[self.lookup(unit).id.idd]
         if kind:
             return list(ports[kind].values())
         else:
