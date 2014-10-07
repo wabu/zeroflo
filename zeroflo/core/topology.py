@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-from pyadds import observe
 from pyadds.annotate import delayed
 
 from .idd import Idd, Id
@@ -57,7 +56,7 @@ class Port(Idd):
         return self.id.idd
 
     def of(self, unit):
-        assert unit.tp == self.unit
+        assert unit.id == self.unit.id
         return getattr(unit, self.port)
 
     def __str__(self):
@@ -98,7 +97,7 @@ def ddict():
 def dlist():
     return defaultdict(list)
 
-class Topology(observe.Observable, Idd):
+class Topology(Idd):
     """ the flow topology object """
     def __init__(self, name='ctx', **kws):
         super().__init__(name=name, **kws)
@@ -112,7 +111,6 @@ class Topology(observe.Observable, Idd):
         self.outlinks = defaultdict(dlist)
         self.inlinks = defaultdict(dlist)
 
-    @observe.emitting
     def register(self, unit, **hints):
         """ register unit inside topology """
         s = Space(self)
@@ -128,8 +126,11 @@ class Topology(observe.Observable, Idd):
             self.get_port(port)
         return u
 
-    @observe.emitting
-    def join(self, s1, s2):
+    def unregister(self, unit):
+        u = self.lookup(unit)
+        self.units.pop(u.id.idd)
+
+    def join(self, s1, s2, bound=True):
         """ join to spaces together """
         if s2.id.idd in s1.pars:
             raise ValueError("can't join spaces becaue they are already parted")
@@ -145,17 +146,21 @@ class Topology(observe.Observable, Idd):
             sp.pars.add(s1.id.idd)
         s1.pars.update(s2.pars)
         s2.pars.clear()
+
+        s1.bound |= bound | s2.bound
         return s1
 
-    @observe.emitting
-    def par(self, s1, s2):
+    def par(self, s1, s2, bound=True):
         """ set two spaces apart """
         if s1 == s2:
             raise ValueError("can't part spaces because they are already joined")
         s1.pars.add(s2.id.idd)
         s2.pars.add(s1.id.idd)
 
-    @observe.emitting
+        s1.bound |= bound
+        s2.bound |= bound
+        return s2
+
     def add_link(self, source, target, **hints):
         """ adds links between source and target port """
         src = self.get_port(source)
@@ -172,21 +177,22 @@ class Topology(observe.Observable, Idd):
         self.inlinks[tgt.id.idd][src.id.idd].append(link)
         return link
 
-    @observe.emitting
     def remove_links(self, source, target):
         """ removes links between source and target port """
         src = self.get_port(source)
         tgt = self.get_port(target)
 
-        outs = self.outlinks[src.id.idd].pop(tgt)
-        ins = self.inlinks[tgt.id.idd].pop(src)
+        outs = self.outlinks[src.id.idd].pop(tgt.id.idd)
+        ins = self.inlinks[tgt.id.idd].pop(src.id.idd)
 
         assert outs == ins
 
         for link in outs:
             src.links.remove(link)
             tgt.links.remove(link)
-        return links
+            self.links.remove(link)
+
+        return outs
 
     def lookup(self, unit):
         """ lookup topology of a unit """
@@ -203,7 +209,8 @@ class Topology(observe.Observable, Idd):
         try:
             return self.ports[unit.id.idd][kind][name]
         except KeyError:
-            self.ports[unit.id.idd][kind][name] = Port(unit, name, [], port.hints)
+            port = self.ports[unit.id.idd][kind][name] = Port(unit, name, [], port.hints)
+            return port
 
     def ports_of(self, unit, kind=None):
         ports = self.ports[self.lookup(unit).id.idd]
@@ -215,7 +222,7 @@ class Topology(observe.Observable, Idd):
     def __getitem__(self, ref):
         try:
             return self.lookup(ref)
-        except KeyError:
+        except (KeyError, AttributeError):
             pass
 
         try:
@@ -228,7 +235,7 @@ class Topology(observe.Observable, Idd):
         Parameters
         ----------
         ref : <tp>, default None
-            any topologial reference object (space, unit, port)
+            any topological reference object (space, unit, port)
             
         kind : {None, 'source', 'target'}, default None
             kink of the link or None
@@ -275,7 +282,7 @@ class Topology(observe.Observable, Idd):
 
         for space in unbound:
             if space not in master.pars:
-                self.join(master, space)
+                self.join(master, space, bound=False)
 
     def links_from(self, ref):
         return self.links_for(ref, kind='source')
@@ -288,6 +295,27 @@ class Topology(observe.Observable, Idd):
 
     def points_to(self, ref):
         return self.endpoints(ref, kind='target')
+
+    def unit_dependecies(self, unit):
+        unit = self[unit]
+
+        # bfs for units sources
+        units = []
+        todos = {unit}
+        done = set()
+        while todos:
+            done.update(todos)
+            units.extend(todos)
+            todos = {l.source.unit for td in todos for l in self.links_to(td)}
+            todos -= done
+        return units
+
+    def dependencies(self, unit, kind=None):
+        units = self.unit_dependecies(unit)
+        if kind is None:
+            return units
+        else:
+            return [p for u in units for p in self.ports_of(u, kind=kind)]
 
     def __repr__(self):
         items=[]

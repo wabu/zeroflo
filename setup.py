@@ -7,7 +7,7 @@ setup(
     scripts = [],
     install_requires = [
             'docutils>=0.3',
-            'aiozmq>=0.4',
+            'aiozmq>=0.5',
             'pyadds>=0.1',
             ],
     package_data = {

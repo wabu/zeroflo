@@ -1,5 +1,5 @@
 import logging
-import zeroflo.core.unit as flo
+import zeroflo as flo
 
 import os
 
@@ -43,30 +43,31 @@ def setup_logging():
 if __name__ == "__main__":
     from examples.simple import *
 
-    with flo.context('simple', setup=setup_logging) as ctx:
+    ctx = flo.Context('simple')
+
+    with ctx.setup(setup=setup_logging):
         # create flow units
         src = Source()
         prc = Process()
         snk = Sink()
 
         # connect flow units
-        ctx.tp.add_link(src.out, prc.ins)
-        ctx.tp.add_link(prc.out, snk.ins)
+        src >> prc >> snk
 
-        ctx.tp.join(src.tp.space, snk.tp.space)
-        ctx.tp.par(src.tp.space, prc.tp.space)
-        #ctx.tp.join(src.tp.space, prc.tp.space)
+        src & snk | prc
+
         print('--')
-        print(repr(ctx.tp))
+        print(repr(ctx.topology))
 
+    with ctx.run():
+        src.ins(['one', 'two', 'three'])
+        src.ins(range(9))
 
-        #src.out >> prc.ins
-        #prc.out >> snk.ins
+        src.ins.delay('abc')
+        src.ins.delay(range(3))
+        for i in prc.out:
+            print('###', i, '###')
 
+        print('---', ' ', '---')
+        snk.join()
 
-        # specifiy distribution
-        #src | prc & snk
-
-    # simple call to trigger flow
-    #src.ins(['one', 'two', 'three'])
-    #src.ins(range(9))

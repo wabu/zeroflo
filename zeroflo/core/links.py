@@ -40,7 +40,7 @@ class OutChan(Chan):
     __show__ = '>>'
 
     @coroutine
-    def deliver(self, pid, packet):
+    def deliver(self, tgt, packet):
         raise NotImplementedError
 
 

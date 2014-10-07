@@ -47,11 +47,11 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     return pr._stream
 
 
-def fwd(name, impl=aiozmq.core._ZmqTransportImpl):
-    f = getattr(impl, name)
+def fwd(name, iface=aiozmq.ZmqTransport):
+    f = getattr(iface, name)
     @wraps(f)
     def fwd(self, *args, **kws):
-        return f(self._tr, *args, **kws)
+        return getattr(self._tr, name)(*args, **kws)
     return fwd
 
 class ZmqStream:
@@ -95,6 +95,8 @@ class ZmqStream:
         """read a multipart message"""
         logger.debug('%s reading', self)
         datas = yield from self._pr._reading.get()
+        if isinstance(datas, Exception):
+            raise datas
         logger.debug('%s read %s', self, [len(p) for p in datas])
         if self._paused and self._pr._reading.qsize() < self._limit:
             logger.debug('%s resumes read', self)

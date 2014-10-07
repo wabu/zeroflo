@@ -6,7 +6,7 @@ from asyncio import coroutine
 from pyadds.annotate import cached, delayed, Conotate
 from pyadds.str import name_of
 
-from .ctx import get_current_context, context
+from .ctx import withtp, withctrl, withctx
 from .idd import IdPath
 from .packet import Tag
 
@@ -18,21 +18,10 @@ class Unit:
     """
     flo unit with the functionality the flow is build of
     """
+    @withctx
     def __init__(self, *, ctx=None, name=None):
-        if ctx is None:
-            ctx = get_current_context()
-
-        self.ctx = ctx
         self.name = name or name_of(self)
-        ctx.register(self)
-
-    @delayed
-    def ctx(self):
-        raise ValueError
-
-    @cached
-    def tp(self):
-        return self.ctx.tp.lookup(self.id)
+        self.id = ctx.register(self).id
 
     @coroutine
     def __setup__(self):
@@ -63,12 +52,16 @@ class Unit:
         """outgoing links"""
         return list(chain.from_iterable(p.links for p in self.outports))
 
-    def __or__(self, other):
-        self.ctx.tp.par(self.tp.space, other.tp.space)
+    @withtp
+    def __or__(self, other, tp):
+        # XXX add extraction to toplogoy
+        tp.par(tp[self.id].space, tp[other.id].space)
         return other
 
-    def __and__(self, other):
-        self.ctx.tp.join(self.tp.space, other.tp.space)
+    @withtp
+    def __and__(self, other, tp):
+        # XXX add extraction to toplogoy
+        tp.join(tp[self.id].space, tp[other.id].space)
         return other
 
     def __rshift__(self, other):
@@ -79,11 +72,16 @@ class Unit:
         other >> self.ins
         return self
 
+    @withctrl
+    def join(self, ctrl):
+        asyncio.get_event_loop().run_until_complete(
+                ctrl.await(self))
+
     def __str__(self):
-        return str(self.tp)
+        return str(self.id)
 
     def __repr__(self):
-        return repr(self.tp)
+        return repr(self.id)
 
 
 class Sync(namedtuple('Sync', 'target, source')):
@@ -114,29 +112,49 @@ class Port:
         self.unit = unit
         self.name = name
         self.definition = definition
-        self.ctx = unit.ctx
         self.hints = hints
-
-    @cached
-    def tp(self):
-        return self.ctx.tp.get_port(self)
 
     @cached
     def method(self):
         return self.definition.__get__(self.unit)
 
     @coroutine
-    def run(self, load, tag=None, **kws):
+    @withctrl
+    def run(self, load, tag=None, ctrl=None, **kws):
+        tp = ctrl.tp
+
         if tag is None:
             tag = Tag()
         tag = tag.add(**kws)
 
-        packet = load >> tag
+        logger.info('running {!r} >> {!r}'.format(load >> tag, self))
 
-        print('running {!r} >> {!r}'.format(packet, self))
+        # get context bla ...
+        call = CallHelper()
+        # XXX set call to be local ... 
+        tp.add_link(call.out, self)
 
-        yield from self.ctx.ctrl.activate(self.unit)
-        yield from self.ctx.ctrl.handle(self, packet)
+        yield from ctrl.activate(call)
+
+        yield from call.ins(load, tag)
+
+        yield from ctrl.await(call)
+        yield from ctrl.close(call)
+
+        tp.remove_links(call.out, self)
+        tp.unregister(call)
+
+
+    def async(self, *args, **kws):
+        return self.run(*args, **kws)
+
+    def execute(self, *args, **kws):
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(self.run(*args, **kws))
+
+    @withctrl
+    def delay(self, *args, ctrl, **kws):
+        return ctrl.queue(self.run(*args, **kws))
 
     @property
     def __self__(self):
@@ -151,21 +169,19 @@ class Port:
         if loop.is_running():
             return self.method(*args, **kws)
         else:
-            return loop.run_until_complete(self.run(*args, **kws))
-
-    def async(self, *args, **kws):
-        return asyncio.async(self.run(*args, **kws))
+            return self.execute(*args, **kws)
 
     def __str__(self):
-        return str(self.tp)
+        return '{}.{}'.format(self.unit, self.name)
 
     def __repr__(self):
-        return repr(self.tp)
+        return '{!r}.{}'.format(self.unit, self.name)
 
-    def __rshift__(self, other):
+    @withtp
+    def __rshift__(self, other, tp):
         if not isinstance(other, Port):
             return NotImplemented
-        self.ctx.tp.add_link(self, other)
+        tp.add_link(self, other)
         return other
 
 
@@ -184,8 +200,26 @@ class OutPort(Port):
         return []
 
     @coroutine
-    def handle(self, packet):
-        logger.debug('no handler on %s for  %s', self, packet)
+    def handle(self, pid, packet):
+        logger.debug('no handler on %s for  %s by %s', self, packet, pid)
+
+    @withctrl
+    def __iter__(self, ctrl):
+        tp = ctrl.tp
+        run = asyncio.get_event_loop().run_until_complete
+
+        logger.info('yielding from {!r}'.format(self))
+
+        yld = YieldHelper()
+        tp.add_link(self, yld.ins)
+
+        run(ctrl.activate(yld))
+        run(ctrl.replay())
+        yield from yld
+        run(ctrl.close(yld))
+
+        tp.remove_links(self, yld.ins)
+        tp.unregister(yld)
 
 
 class unbound(Conotate, cached):
@@ -209,3 +243,39 @@ def sync(target='unit', source='any'):
     return annotate
 
 async = sync('port')
+
+
+class CallHelper(Unit):
+    @outport
+    def out(): pass
+
+    @inport
+    def ins(self, load, tag):
+        yield from load >> tag >> self.out
+
+class YieldHelper(Unit):
+    @coroutine
+    def __setup__(self):
+        self.q = asyncio.Queue()
+
+    @inport
+    def ins(self, load, tag):
+        print('%%%', load >> tag)
+        yield from self.q.put(load >> tag)
+
+    @withctrl
+    def __iter__(self, ctrl):
+        run = asyncio.get_event_loop().run_until_complete
+        await = asyncio.async(ctrl.await(self))
+        while True:
+            get = asyncio.async(self.q.get())
+            run(asyncio.wait([await, get], 
+                             return_when=asyncio.FIRST_COMPLETED))
+            if get.done():
+                yield get.result()
+            if await.done():
+                break
+
+        while self.q.qsize():
+            yield run(self.q.get())
+

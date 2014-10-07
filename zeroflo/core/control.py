@@ -2,10 +2,9 @@ from functools import wraps
 from collections import defaultdict
 
 import asyncio
-from asyncio import coroutine
+from asyncio import coroutine, Task
 
 from pyadds.annotate import cached, delayed
-from pyadds import spawn
 
 from . import resolve
 from . import rpc
@@ -13,24 +12,36 @@ from . import rpc
 import logging
 logger = logging.getLogger(__name__)
 
+
 class Process:
-    def __init__(self, setup=None):
-        self.receiver = resolve.Receiver.defaults()
-        self.deliver = resolve.Deliver.defaults()
+    def __init__(self, tracker):
+        self.tracker = tracker
+        self.receiver = resolve.Receiver.defaults(tracker=tracker)
+        self.deliver = resolve.Deliver.defaults(tracker=tracker)
         self.outs = defaultdict(list)
         self.units = {}
-        self.setup = setup
+
+    @coroutine
+    def setup(self):
+        logger.debug('setting up %s', self.tracker)
+        yield from self.tracker.setup()
 
     @coroutine
     def register(self, unit, outs, ins):
-        self.units[unit.tp.id.idd] = unit
+        if not unit.id.idd in self.units:
+            yield from unit.__setup__()
+            self.units[unit.id.idd] = unit
 
         for l in ins:
             yield from self.receiver[l.endpoint].register(unit, l)
 
         for l in outs:
             chan = yield from self.deliver[l.endpoint].register(unit, l)
-            self.outs[l.source.pid].append((l.target.pid, chan))
+            outs = self.outs[l.source.pid]
+            out = (l.target.pid, chan)
+            if out not in outs:
+                outs.append(out)
+            l.source.of(unit).handle = self.handler(l.source.pid)
             
     @coroutine
     def activate(self, outs, ins):
@@ -40,64 +51,76 @@ class Process:
         for l in outs:
             yield from self.deliver[l.endpoint].activate(l)
 
-            unit = self.units[l.source.unit.id.idd]
-            l.source.of(unit).handle = self.handler(l.source.pid)
-
     @coroutine
-    def ping(self, arg):
-        print('remote says', arg)
-        return 'pong', arg
+    def info(self):
+        return Task.all_tasks()
 
-
-    def handler(self, pid):
-        outs = self.outs[pid] 
+    def handler(self, src):
+        outs = self.outs[src] 
+        aquire = self.tracker.aquire
         @coroutine
         def handle(self, packet):
-            yield from asyncio.gather(
-                    *[chan.deliver((pid, packet)) for pid,chan in outs])
+            #yield from aquire(src, len(outs))
+            aq = asyncio.gather(*(aquire(tgt) for tgt,_ in outs))
+            dl = asyncio.gather(*(chan.deliver((tgt, packet)) 
+                        for tgt,chan in outs))
+            yield from asyncio.gather(aq, dl)
         return handle
 
-
     @coroutine
-    def handle(self, port, packet):
-        return (yield from port.of(self.units[port.unit.id.idd]).handle(*packet))
-
-
-def setup_aiozmq():
-    import asyncio
-    import aiozmq
-    asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
+    def close(self, uid):
+        ...
 
 
 class Control:
     def __init__(self, *, ctx, tp):
-        self.ctx = ctx
         self.tp = tp
+        self.spawner = ctx.spawner
 
         self.procs = {}
         self.units = {}
+        self.queued = []
 
-    def register(self, unit):
-        self.units[unit.tp] = unit
+    def queue(self, coro):
+        self.queued.append(coro)
+
+    def replay(self):
+        @coroutine
+        def replay():
+            for coro in self.queued:
+                yield from coro
+        return asyncio.async(replay())
 
     @cached
-    def spawner(self):
-        spawner = spawn.get_spawner('forkserver')
-        spawner.add_setup(setup_aiozmq)
-        spawner.add_setup(self.ctx.setup)
-        return spawner
+    def local(self):
+        return None
 
+    def register(self, unit):
+        self.units[unit.id] = unit
 
     @coroutine
     def ensure(self, space):
+        if not space.bound:
+            if not self.local:
+                proc = self.local = Process(tracker=rpc.Master(self.tp.path))
+                yield from proc.setup()
+            else:
+                proc = self.local
+
+            logger.debug('{!r} is local'.format(space))
+            return self.local
+
         try:
             return self.procs[space]
         except KeyError:
             logger.debug('spawning for {!r}'.format(space))
-            remote = rpc.Remote(Process(), endpoint=space.path)
+            remote = rpc.Remote(Process(tracker=rpc.Tracker(self.tp.path)), 
+                                endpoint=space.path)
 
             yield from self.spawner.cospawn(remote.__remote__)
             yield from remote.__setup__()
+
+            yield from remote.setup()
 
             self.procs[space] = remote
             return remote
@@ -120,30 +143,18 @@ class Control:
         u.active = True
         for l in self.tp.links_from(u):
             tgt = l.target.unit
-            if not tgt.active:
-                yield from self.activate(self.units[tgt])
+            yield from self.activate(self.units[tgt.id])
+
+    @coroutine
+    def await(self, unit):
+        deps = self.tp.dependencies(unit, kind='target')
+        logger.debug('%s depends on %s', unit, deps)
+        deps = [p.pid for p in deps]
+        logger.debug('%s depends on %s', unit, ['%x' % p for p in deps])
+        yield from self.local.tracker.await(*deps)
 
 
     @coroutine
-    def handle(self, port, packet):
-        chan = yield from self.ensure(port.tp.unit.space)
-        yield from chan.handle(port.tp, packet)
-
-
-def remote(f):
-    streams = weakref.WeakKeyDictionry()
-
-    @wraps(f)
-    def bind(self, space):
-        # get/create stream+process
-        try:
-            stream = streams[self]
-        except KeyError:
-            stream = mk_stream(space)
-
-        @wraps(f)
-        def send(self, *args, **kws):
-            yield from self.stream.push(args, kws)
-            return (yield from self.stream.pull())
-        return send
-    return bind
+    def close(self, unit):
+        chan = yield from self.ensure(self.tp[unit].space)
+        yield from chan.close(unit.id.idd)
