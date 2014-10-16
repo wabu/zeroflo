@@ -96,11 +96,19 @@ class ZmqStream:
     def read(self):
         """read a multipart message"""
         logger.debug('%s reading', self)
-        datas = yield from self._pr._reading.get()
+
+        buf =  self._pr._buffer
+        while not buf:
+            logger.debug('%s waiting for data', self)
+            yield from self._pr._reading.wait()
+        datas = buf.pop(0)
+        if not buf:
+            self._pr._reading.clear()
+
         if isinstance(datas, Exception):
             raise datas
         logger.debug('%s read %s', self, [len(p) for p in datas])
-        if self._paused and self._pr._reading.qsize() < self._limit:
+        if self._paused and len(self._pr._buffer) <= self._limit//2:
             logger.debug('%s resumes read', self)
             self._paused = False
             self._tr.resume_reading()
@@ -149,7 +157,8 @@ class ZmqStream:
 
 class ZmqStreamProtocol(aiozmq.ZmqProtocol):
     def __init__(self, limit):
-        self._reading = asyncio.Queue()
+        self._buffer = []
+        self._reading = asyncio.Event()
         self._writing = asyncio.Event()
         self._closed = asyncio.Event()
         self._limit = limit
@@ -162,7 +171,8 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
     def connection_lost(self, exc):
         # signal error/close
         logger.debug('%s lost connection %s', self, exc)
-        asyncio.async(self._reading.put(exc or []))
+        self._buffer.append(exc or [])
+        self._reading.set()
         if exc is None:
             self._closed.set()
         else:
@@ -179,11 +189,12 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
 
     def msg_received(self, datas):
         logger.debug('%s received %s', self, [len(p) for p in datas])
-        if self._reading.qsize()-1 >= self._limit:
+        if len(self._buffer)-1 >= self._limit:
             logger.debug('%s full, pausing read', self)
             self._stream._paused = True
             self._stream._tr.pause_reading()
-        asyncio.async(self._reading.put(datas))
+        self._buffer.append(datas)
+        self._reading.set()
 
     def __str__(self):
         return str(self._stream)

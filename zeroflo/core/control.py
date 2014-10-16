@@ -127,7 +127,10 @@ class Control:
 
                 remote = rpc.Remote(Process(tracker=self.tracker), endpoint=path)
 
-                yield from self.spawner.cospawn(remote.__remote__)
+                proc = yield from self.spawner.cospawn(remote.__remote__, __name__=repr(space))
+                with open(path.namespace()+'/pids', 'a') as f:
+                    f.write('{}\n'.format(proc.pid))
+                
                 yield from remote.__setup__()
 
                 yield from remote.setup()
