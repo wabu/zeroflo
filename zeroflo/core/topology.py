@@ -28,6 +28,7 @@ class Space(Idd):
     def __init__(self, tp, units=None, pars=None, **kws):
         super().__init__(**kws)
         self.tp = tp
+        self.replicate = 0
         self.units = units or []
         self.pars = pars or set()
         self.bound = False
@@ -82,6 +83,8 @@ class Link:
     def kind(self):
         if self.target.unit.space == self.source.unit.space:
             return 'local'
+        elif self.target.unit.space.replicate:
+            return 'repl'
         else:
             return 'par'
 
@@ -103,7 +106,7 @@ class Topology(Idd):
         super().__init__(name=name, **kws)
 
         self.units = {}
-        self.spaces = []
+        self.spaces = {}
 
         self.ports = defaultdict(ddict)
         self.links = []
@@ -117,7 +120,7 @@ class Topology(Idd):
         u = Unit(space=s, name=unit.name, hints=hints)
 
         s.units.append(u)
-        self.spaces.append(s)
+        self.spaces[s.id.idd] = s
 
         self.units[u.id.idd] = u
         unit.id = u.id
@@ -135,15 +138,20 @@ class Topology(Idd):
         if s2.id.idd in s1.pars:
             raise ValueError("can't join spaces becaue they are already parted")
 
+        if s2.replicate:
+            if s1.replicate and s2.replicate != s1.replicate:
+                raise ValueError("different replicate values for spaces!")
+            s1.replicate = s2.replicate
+
         for u in s2.units:
             u.space = s1
             s1.units.append(u)
         #s2.units.clear()
-        self.spaces.remove(s2)
+        self.spaces.pop(s2.id.idd)
 
-        for sp.id.idd in s2.pars:
-            sp.pars.remove(s2.id.idd)
-            sp.pars.add(s1.id.idd)
+        for si in s2.pars:
+            self.spaces[si].pars.remove(s2.id.idd)
+            self.spaces[si].pars.add(s1.id.idd)
         s1.pars.update(s2.pars)
         s2.pars.clear()
 
@@ -319,7 +327,7 @@ class Topology(Idd):
 
     def __repr__(self):
         items=[]
-        for space in self.spaces:
+        for space in self.spaces.values():
             its = []
             its.append('{!r}:'.format(space))
             for unit in space.units:

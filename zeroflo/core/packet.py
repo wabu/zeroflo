@@ -72,6 +72,12 @@ class Tag(dict):
             raise AttributeError
         return self.get(name, None)
 
+    def __getitem__(self, item):
+        if isinstance(item, tuple):
+            return Tag({i: self[i] for i in item})
+        else:
+            return getattr(self, item)
+
     def __repr__(self):
         return ', '.join('{}: {}'.format(k,v) for k,v in sorted(self.items()))
 

@@ -1,12 +1,11 @@
 from ..core import *
+from ..core.packet import Tag
 from ..ext import param, Paramed
 
 import time
-import logging
 
 from collections import defaultdict
-
-logger = logging.getLogger(__name__)
+from pyadds.logging import log
 
 class match(Unit):
     def __init__(self, **matches):
@@ -86,6 +85,7 @@ class Reorder(Paramed, Unit):
         yield from self.push()
 
 
+@log
 class Collect(Paramed, Unit):
     @param
     def warmup(self, warmup=128):
@@ -132,23 +132,22 @@ class Collect(Paramed, Unit):
         yield from asyncio.gather([q.put((None, None)) for q in self.queues.values()])
 
     def reduce(self, datas):
-        return sum(datas, [])
+        return b''.join(datas)
 
     @coroutine
     def pusher(self, q):
-        ctx = self.ctx
         datas = []
         timeout = self.timeout
         length = self.length
         number = self.number
         total = 0
         count = 0
-        tag = port.Tag()
+        tag = Tag()
         first = None
         warmup = self.warmup
 
         reduce = self.reduce
-        release = ctx.release
+        #release = ctx.release
 
         while True:
             flush = False
@@ -156,7 +155,7 @@ class Collect(Paramed, Unit):
             if datas:
                 try:
                     data,t = yield from asyncio.wait_for(q.get(), 
-                            first + timeout - time.time(), loop=ctx.loop)
+                            first + timeout - time.time())
                 except asyncio.TimeoutError:
                     flush = True
             else:
@@ -183,10 +182,10 @@ class Collect(Paramed, Unit):
                             collected_num = len(datas),
                             collected_delta = time.time() - first
                             ) >> self.out
-                    yield from ctx.release(count)
+                    #yield from ctx.release(count)
                     total = count = 0
                     datas=[]
-                    tag = port.Tag()
+                    tag = Tag()
 
             if not flush and t is None:
                 break
@@ -200,10 +199,9 @@ class Collect(Paramed, Unit):
         try:
             q = self.queues[by]
         except KeyError:
-            logger.info('CLT.ins new queue for %s', by)
-            loop = ctx.loop
-            q = asyncio.Queue(self.max_queued, loop=loop)
-            asyncio.async(self.pusher(q), loop=loop)
+            self.__log.info('new queue for %s', by)
+            q = asyncio.Queue(self.max_queued)
+            asyncio.async(self.pusher(q))
             self.queues[by] = q
 
         yield from q.put((data, tag))

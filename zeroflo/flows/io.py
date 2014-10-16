@@ -6,9 +6,9 @@ from pathlib import Path
 import itertools as it
 from contextlib import contextmanager
 
-import logging
-logger = logging.getLogger(__name__)
+from pyadds.logging import log
 
+@log
 class ListFiles(Paramed, Unit):
     @param
     def dirs(self, dirs=['.']):
@@ -31,13 +31,13 @@ class ListFiles(Paramed, Unit):
                 for file in sorted(path.glob(match)):
                     if file.name in done:
                         continue
-                    logger.info('file %r matches %r' % (str(file), match))
+                    self.__log.info('file %r matches %r' % (str(file), match))
                     processed = True
                     done.add(file.name)
                     yield from str(file) >> tag >> self.out
             if not processed:
                 raise ValueError('no matching files found for %r' % match)
-            
+
 
 class Reader(Paramed, Unit):
     """ read chunks of lines """
@@ -45,7 +45,7 @@ class Reader(Paramed, Unit):
     def out(): pass
 
     @param
-    def chunksize(self, chunksize='16m'):
+    def chunksize(self, chunksize='15m'):
         return param.sizeof(chunksize)
 
     @param
@@ -58,64 +58,66 @@ class Reader(Paramed, Unit):
         limit = tag.limit
 
         offset = self.offset
-        lineno = 0
-        rest = ''
+        rest = b''
 
+        chunksize = self.chunksize
         with (yield from self.open(filename)) as file:
             eof = False
             while not eof:
-                chunk = (yield from file.read(self.chunksize)).decode()
-                eof = file.at_eof()
+                chunk = rest
+                while not eof and len(chunk) < chunksize:
+                    chunk += (yield from file.read(chunksize))
+                    eof = file.at_eof()
+
                 if eof:
                     tag = tag.add(eof=True, flush=True)
-                tag = tag.add(filename=filename, lineno=lineno, offset=offset)
 
-                first,*lines = chunk.split('\n')
-                lines.insert(0, rest+first)
-
-                rest = lines.pop()
+                data,rest = chunk.rsplit(b'\n', 1)
                 if eof and rest.strip():
-                    lines.append(rest)
+                    data = chunk
 
-                length = len(lines)
-                lineno += length
-                offset += length
+                size = len(data)
+                tag = tag.add(filename=filename, offset=offset, size=size)
+                offset += size
 
                 if skip:
-                    if length >= skip:
-                        skip -= length
+                    if size >= skip:
+                        skip -= size
                         continue
                     else:
-                        lines = lines[skip:]
+                        data = data[skip:]
                         skip = 0
 
                 if limit:
-                    if limit <= length:
-                        lines = lines[:limit]
+                    if limit <= size:
+                        data = data[:limit]
                         eof = tag.eof = True
                         tag.limited = True
                     else:
-                        limit -= length
+                        limit -= size
 
-                if lines:
-                    yield from lines >> tag >> self.out
+                if data:
+                    yield from data >> tag >> self.out
                 elif eof:
                     # ensure that eof gets send out
-                    yield from [] >> tag >> self.out
+                    yield from '' >> tag >> self.out
 
 
 class PBzReader(Reader):
     @coroutine
     def open(self, filename):
         pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
-                stdout=asyncio.subprocess.PIPE, loop=self.ctx.loop)
+                stdout=asyncio.subprocess.PIPE)
 
         @contextmanager
         def closing():
             try:
                 yield pbzip2.stdout
             except:
-                pbzip2.kill()
-                asyncio.async(pbzip2.wait(), loop=loop)
+                try:
+                    pbzip2.kill()
+                except ProcessLookupError:
+                    pass
+                asyncio.async(pbzip2.wait())
                 raise
         return closing()

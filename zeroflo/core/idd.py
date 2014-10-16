@@ -44,6 +44,13 @@ class Sym(namedtuple('SymBase', 'idd'), Id):
     __repr__ = __str__
 
 
+class Named(namedtuple('NamedBase', 'name, value')):
+    def __str__(self):
+        return '{}:{}'.format(name, value)
+
+    __repr__ = __str__
+
+
 class IdPath(namedtuple('IdPathBase', 'refs, ids')):
     @property
     def strs(self):
@@ -78,9 +85,11 @@ class IdPath(namedtuple('IdPathBase', 'refs, ids')):
 
 
     def __add__(self, other):
-        if not isinstance(other, IdPath):
-            return NotImplemented
-        return IdPath(self.refs+other.refs, self.ids+other.ids)
+        if isinstance(other, IdPath):
+            return IdPath(self.refs+other.refs, self.ids+other.ids)
+        if isinstance(other, Named):
+            return self + IdPath((other.name,), (Sym(str(other.value)),))
+        return NotImplemented
 
     def __str__(self):
         return join_path(*self.strs)

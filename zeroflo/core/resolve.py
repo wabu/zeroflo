@@ -5,8 +5,8 @@ from asyncio import coroutine
 
 from .links import linkers
 
-import logging
-logger = logging.getLogger(__name__)
+from pyadds.logging import log
+from pyadds.forkbug import maybug
 
 
 class Defaults(dict):
@@ -23,6 +23,7 @@ class Defaults(dict):
             return result
 
 
+@log(short='rsl', sign='##')
 class Resolver:
     __site__ = None
 
@@ -52,12 +53,12 @@ class Resolver:
 
     @coroutine
     def activate_chan(self, kind, chan):
-        logger.debug('dispatch activates %s for %s::%s', 'chan', self.endpoint, kind)
+        self.__log.debug('dispatch activates %s for %s::%s', 'chan', self.endpoint, kind)
         yield from chan.setup()
 
     @coroutine
     def close_chan(self, kind, chan):
-        logger.debug('close %s for %s::%s', 'chan', self.endpoint, kind)
+        self.__log.debug('close %s for %s::%s', 'chan', self.endpoint, kind)
         yield from chan.close()
 
     @coroutine
@@ -73,6 +74,7 @@ class Resolver:
             yield from self.close_chan(self.chans[link.kind])
 
 
+@log(short='rcv', sign='#<')
 class Receiver(Resolver):
     __site__ = 'target'
 
@@ -94,7 +96,7 @@ class Receiver(Resolver):
 
     @coroutine
     def activate_chan(self, kind, chan):
-        logger.debug('receiver activates %s for %s::%s', 'chan', self.endpoint, kind)
+        self.__log.debug('receiver activates %s for %s::%s', 'chan', self.endpoint, kind)
         yield from super().activate_chan(kind, chan)
         if not self.loops:
             assert not self.main
@@ -113,7 +115,7 @@ class Receiver(Resolver):
         
     @coroutine
     def loop(self, chan):
-        logger.debug('looping %s: %s', self.endpoint, chan)
+        self.__log.debug('looping %s: %s', self.endpoint, chan)
         fetch = chan.fetch
         put = self.queue.put
         while True:
@@ -122,14 +124,15 @@ class Receiver(Resolver):
 
     @coroutine
     def run(self):
-        logger.debug('running %s', self.endpoint)
+        self.__log.debug('running %s', self.endpoint)
         get = self.queue.get
         prts = self.portmap
         aquire = self.tracker.aquire
         release = self.tracker.release
         while True:
             tgt, packet = yield from get()
-            yield from prts[tgt](*packet)
+            with maybug(namespace=self.endpoint):
+                yield from prts[tgt](*packet)
             yield from release(tgt)
 
 

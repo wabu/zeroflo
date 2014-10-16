@@ -15,11 +15,13 @@ import pickle
 
 from functools import wraps
 from collections import namedtuple
+
 import types
 import os
 
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.LoggerAdapter(logging.getLogger(__name__),
+                               extra={'short': 'zmq'})
     
 @coroutine
 def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):

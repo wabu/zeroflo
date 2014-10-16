@@ -1,7 +1,8 @@
 import logging
 import zeroflo as flo
 
-logger = logging.getLogger(__name__)
+from pyadds.logging import log
+
 
 """
 Fibonacci Flow
@@ -32,6 +33,7 @@ The distribute into different process spaces is arbitrary,
 but shows how easy it es to setup distributed flows.
 """
 
+@log(short='lag')
 class Lag(flo.Unit):
     def __init__(self, *args, **kws):
         super().__init__(*args, **kws)
@@ -42,16 +44,18 @@ class Lag(flo.Unit):
 
     @flo.inport
     def ins(self, i, tag):
+        print('lag', i >> tag)
         if self.setup:
-            logger.debug('lag: >> %d << %d', self.last, i)
+            self.__log.debug('>> %d << %d', self.last, i)
             yield from self.last >> tag.add(lag=1) >> self.out
         else:
-            logger.debug('lag: << %d', i)
+            self.__log.debug('<< %d', i)
             self.setup = True
 
         self.last = i
 
 
+@log(short='add')
 class Add(flo.Unit):
     @flo.outport
     def out(i, tag): pass
@@ -63,16 +67,17 @@ class Add(flo.Unit):
     @flo.async
     @flo.inport
     def a(self, a, tag):
-        logger.debug('add: <<a %s (%s)', a, tag.lag)
+        self.__log.debug('<<a %s (%s)', a, tag.lag)
         yield from self.add(a=a, tag=tag)
 
     @flo.async
     @flo.inport
     def b(self, b, tag):
-        logger.debug('add: <<b %s (%s)', b, tag.lag)
+        self.__log.debug('<<b %s (%s)', b, tag.lag)
         yield from self.add(b=b, tag=tag)
 
 
+@log(short='prt')
 class Print(flo.Unit):
     @flo.inport
     def ins(self, o, tag):
@@ -81,17 +86,19 @@ class Print(flo.Unit):
         print('>>', o)
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
+    logging.basicConfig(format='[%(process)d] %(short)s::%(levelname)5s %(message)s')
     logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('examples').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
-    #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
+    logging.getLogger('zeroflo.core.zmqtools').setLevel("INFO")
 
 
 if __name__ == "__main__":
     from examples.fib import *
 
-    with flo.context('fib', setup=setup_logging) as ctx:
+    ctx = flo.Context('fib')
+
+    with ctx.setup(setup=setup_logging):
         # create flow units
         add = Add()
         lag = Lag()
@@ -107,7 +114,10 @@ if __name__ == "__main__":
         # specifiy distribution
         add & lag & prt
 
-    # simple call to trigger flow
-    add.out(0)
-    print('--')
-    add.b(1)
+    with ctx.run():
+        # simple call to trigger flow
+        add.a(0)
+        add.b(0)
+        print('--')
+        add.b(1)
+

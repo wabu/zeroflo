@@ -5,14 +5,11 @@ from asyncio import coroutine
 
 from pyadds.annotate import cached, delayed, Conotate
 from pyadds.str import name_of
+from pyadds.logging import log
 
 from .ctx import withtp, withctrl, withctx
 from .idd import IdPath
 from .packet import Tag
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 class Unit:
     """
@@ -64,6 +61,11 @@ class Unit:
         tp.join(tp[self.id].space, tp[other.id].space)
         return other
 
+    @withtp
+    def __pow__(self, n, tp):
+        tp[self.id].space.replicate = n
+        return self
+
     def __rshift__(self, other):
         self.out >> other
         return other
@@ -107,6 +109,7 @@ class Syncs:
     port = syncer('topology', 'space', 'unit', 'port')
 
 
+@log(short='prt', sign='<>')
 class Port:
     def __init__(self, unit, name, definition, **hints):
         self.unit = unit
@@ -127,7 +130,7 @@ class Port:
             tag = Tag()
         tag = tag.add(**kws)
 
-        logger.info('running {!r} >> {!r}'.format(load >> tag, self))
+        self.__log.info('running {!r} >> {!r}'.format(load >> tag, self))
 
         # get context bla ...
         call = CallHelper()
@@ -185,6 +188,7 @@ class Port:
         return other
 
 
+@log(short='ins', sign='<<')
 class InPort(Port):
     __kind__ = 'target'
 
@@ -192,6 +196,8 @@ class InPort(Port):
     def handle(self):
         return self.method
 
+
+@log(short='out', sign='>>')
 class OutPort(Port):
     __kind__ = 'source'
 
@@ -201,14 +207,14 @@ class OutPort(Port):
 
     @coroutine
     def handle(self, pid, packet):
-        logger.debug('no handler on %s for  %s by %s', self, packet, pid)
+        self.__log.debug('no handler on %s for  %s by %s', self, packet, pid)
 
     @withctrl
     def __iter__(self, ctrl):
         tp = ctrl.tp
         run = asyncio.get_event_loop().run_until_complete
 
-        logger.info('yielding from {!r}'.format(self))
+        self.__log.info('yielding from {!r}'.format(self))
 
         yld = YieldHelper()
         tp.add_link(self, yld.ins)
@@ -253,6 +259,7 @@ class CallHelper(Unit):
     def ins(self, load, tag):
         yield from load >> tag >> self.out
 
+@log(short='yld', sign='>|')
 class YieldHelper(Unit):
     @coroutine
     def __setup__(self):
@@ -260,8 +267,9 @@ class YieldHelper(Unit):
 
     @inport
     def ins(self, load, tag):
-        print('%%%', load >> tag)
-        yield from self.q.put(load >> tag)
+        pk = load >> tag
+        self.__log.debug('yielder got %s', pk)
+        yield from self.q.put(pk)
 
     @withctrl
     def __iter__(self, ctrl):

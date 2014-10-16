@@ -15,7 +15,7 @@ class Lines(Unit):
         rest = self.rest
 
 
-        *lines,rest = (rest+data).split('\n')
+        *lines,rest = (rest+data.decode()).split('\n')
         if tag.flush:
             if rest.strip():
                 lines.append(rest)

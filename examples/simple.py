@@ -34,7 +34,7 @@ import asyncio
 import aiozmq
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(levelname)5s %(message)s')
+    logging.basicConfig(format='[%(process)d] %(short)s::%(levelname)5s %(message)s')
     logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         # connect flow units
         src >> prc >> snk
 
-        src & snk | prc
+        src & snk | prc ** 2
 
         print('--')
         print(repr(ctx.topology))
@@ -65,8 +65,8 @@ if __name__ == "__main__":
 
         src.ins.delay('abc')
         src.ins.delay(range(3))
-        for i in prc.out:
-            print('###', i, '###')
+        for i,tag in prc.out:
+            print('###', i, tag, '###')
 
         print('---', ' ', '---')
         snk.join()

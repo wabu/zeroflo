@@ -5,14 +5,13 @@ import asyncio
 from asyncio import coroutine, Task
 
 from pyadds.annotate import cached, delayed
+from pyadds.logging import log
 
 from . import resolve
 from . import rpc
+from . import idd
 
-import logging
-logger = logging.getLogger(__name__)
-
-
+@log(short='prc', sign='{}')
 class Process:
     def __init__(self, tracker):
         self.tracker = tracker
@@ -23,7 +22,7 @@ class Process:
 
     @coroutine
     def setup(self):
-        logger.debug('setting up %s', self.tracker)
+        self.__log.debug('setting up %s', self)
         yield from self.tracker.setup()
 
     @coroutine
@@ -72,6 +71,7 @@ class Process:
         ...
 
 
+@log(short='ctl', sign='%%')
 class Control:
     def __init__(self, *, ctx, tp):
         self.tp = tp
@@ -95,6 +95,10 @@ class Control:
     def local(self):
         return None
 
+    @cached
+    def tracker(self):
+        return rpc.Tracker(self.tp.path)
+
     def register(self, unit):
         self.units[unit.id] = unit
 
@@ -107,50 +111,66 @@ class Control:
             else:
                 proc = self.local
 
-            logger.debug('{!r} is local'.format(space))
+            self.__log.debug('{!r} is local'.format(space))
             return self.local
 
         try:
             return self.procs[space]
         except KeyError:
-            logger.debug('spawning for {!r}'.format(space))
-            remote = rpc.Remote(Process(tracker=rpc.Tracker(self.tp.path)), 
-                                endpoint=space.path)
+            self.__log.debug('spawning for {!r}'.format(space))
 
-            yield from self.spawner.cospawn(remote.__remote__)
-            yield from remote.__setup__()
+            @coroutine
+            def init_remote(i=None):
+                path = space.path
+                if i is not None:
+                    path += idd.Named('replicate', 'rep-'+str(i))
 
-            yield from remote.setup()
+                remote = rpc.Remote(Process(tracker=self.tracker), endpoint=path)
+
+                yield from self.spawner.cospawn(remote.__remote__)
+                yield from remote.__setup__()
+
+                yield from remote.setup()
+                return remote
+
+            if space.replicate:
+                remotes = yield from asyncio.gather(*(
+                            init_remote(i) for i in range(space.replicate)))
+                remote = rpc.Multi(remotes)
+            else:
+                remote = yield from init_remote()
 
             self.procs[space] = remote
             return remote
 
     
     @coroutine
-    def activate(self, unit):
+    def activate(self, unit, actives=set()):
         u = self.tp.lookup(unit)
-        logger.debug('activate {!r} on {!r}'.format(u, u.space))
+        self.__log.debug('activate {!r} on {!r}'.format(u, u.space))
 
         chan = yield from self.ensure(u.space)
-        logger.debug('using {!r}'.format(chan))
+        self.__log.debug('using {!r}'.format(chan))
 
         yield from chan.register(unit, self.tp.links_from(u), self.tp.links_to(u))
-        logger.debug('registered')
+        self.__log.debug('registered')
 
         yield from chan.activate(self.tp.links_from(u), self.tp.links_to(u))
-        logger.debug('activated')
+        self.__log.debug('activated')
 
         u.active = True
         for l in self.tp.links_from(u):
             tgt = l.target.unit
-            yield from self.activate(self.units[tgt.id])
+            if tgt in actives:
+                continue
+            yield from self.activate(self.units[tgt.id], actives|{tgt})
 
     @coroutine
     def await(self, unit):
         deps = self.tp.dependencies(unit, kind='target')
-        logger.debug('%s depends on %s', unit, deps)
+        self.__log.debug('%s depends on %s', unit, deps)
         deps = [p.pid for p in deps]
-        logger.debug('%s depends on %s', unit, ['%x' % p for p in deps])
+        self.__log.debug('%s depends on %s', unit, ['%x' % p for p in deps])
         yield from self.local.tracker.await(*deps)
 
 
