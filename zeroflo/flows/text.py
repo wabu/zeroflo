@@ -11,7 +11,7 @@ class Lines(Unit):
         self.rest = ''
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         rest = self.rest
 
 
@@ -36,6 +36,6 @@ class Filter(Unit, Paramed):
     def out(): pass
 
     @inport
-    def ins(self, lines, tag):
+    def process(self, lines, tag):
         yield from list(filter(self.pattern.search, lines)) >> tag >> self.out
 

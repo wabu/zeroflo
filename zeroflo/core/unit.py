@@ -71,7 +71,7 @@ class Unit:
         return other
 
     def __rrshift__(self, other):
-        other >> self.ins
+        other >> self.process
         return self
 
     @withctrl
@@ -139,7 +139,7 @@ class Port:
 
         yield from ctrl.activate(call)
 
-        yield from call.ins(load, tag)
+        yield from call.process(load, tag)
 
         yield from ctrl.await(call)
         yield from ctrl.close(call)
@@ -217,14 +217,14 @@ class OutPort(Port):
         self.__log.info('yielding from {!r}'.format(self))
 
         yld = YieldHelper()
-        tp.add_link(self, yld.ins)
+        tp.add_link(self, yld.process)
 
         run(ctrl.activate(yld))
         run(ctrl.replay())
         yield from yld
         run(ctrl.close(yld))
 
-        tp.remove_links(self, yld.ins)
+        tp.remove_links(self, yld.process)
         tp.unregister(yld)
 
 
@@ -256,7 +256,7 @@ class CallHelper(Unit):
     def out(): pass
 
     @inport
-    def ins(self, load, tag):
+    def process(self, load, tag):
         yield from load >> tag >> self.out
 
 @log(short='yld', sign='>|')
@@ -266,7 +266,7 @@ class YieldHelper(Unit):
         self.q = asyncio.Queue()
 
     @inport
-    def ins(self, load, tag):
+    def process(self, load, tag):
         pk = load >> tag
         self.__log.debug('yielder got %s', pk)
         yield from self.q.put(pk)

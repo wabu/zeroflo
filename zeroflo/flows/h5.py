@@ -18,5 +18,5 @@ class H5:
         self.st = pd.HdfStore(h5file, complib=self.complib, complevel=self.complevel)
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         pass

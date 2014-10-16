@@ -12,7 +12,7 @@ class Join(Unit):
         return asyncio.Queue()
 
     @inport
-    def ins(self, load, tag):
+    def process(self, load, tag):
         yield from self.q.put(load >> tag)
 
     def __iter__(self):

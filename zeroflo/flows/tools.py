@@ -17,7 +17,7 @@ class match(Unit):
     def out(): pass
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         if all(tag[key] in val for key,val in self.matches.items()):
             yield from data >> tag >> self.out
 
@@ -26,7 +26,7 @@ class forward(Unit):
     def out(): pass
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         yield from data >> tag >> self.out
 
 
@@ -35,7 +35,7 @@ class tagonly(Unit):
     def out(): pass
 
     @inport
-    def ins(self, _, tag):
+    def process(self, _, tag):
         yield from None >> tag >> self.out
 
 
@@ -80,7 +80,7 @@ class Reorder(Paramed, Unit):
         yield from self.push()
 
     @inport
-    def ins(self, load, tag):
+    def process(self, load, tag):
         self.queued[tag[self.by]].append((load,tag))
         yield from self.push()
 
@@ -191,7 +191,7 @@ class Collect(Paramed, Unit):
                 break
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         #ctx = self.ctx
         #yield from ctx.aquire()
 

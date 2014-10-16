@@ -23,7 +23,7 @@ class Watch(Unit, Paramed):
         return pd.datetools.to_offset(value)
 
     @inport
-    def ins(self, start, tag):
+    def process(self, start, tag):
         start = start or tag.start or '1h'
         try:
             start = pd.Timestamp('now') - pd.datetools.to_offset(start)
@@ -83,7 +83,7 @@ class Fetch(Unit, Paramed):
     def out(): pass
 
     @inport
-    def ins(self, path, tag):
+    def process(self, path, tag):
         self.__log.debug('fetch file %s (%s)', path, tag.begin)
         resource = self.root.open(path)
 
@@ -185,7 +185,7 @@ class ListFiles(Paramed, Unit):
     def out(): pass
 
     @inport
-    def ins(self, pattern, tag):
+    def process(self, pattern, tag):
         for match in (yield from self.root.glob(pattern)):
             yield from match >> tag >> self.out
 
@@ -222,7 +222,7 @@ class Gunzip(Unit):
                              >> self.out)
 
     @inport
-    def ins(self, raw, tag):
+    def process(self, raw, tag):
         if tag.offset == 0:
             yield from self.flush(tag)
 

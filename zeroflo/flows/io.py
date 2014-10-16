@@ -19,7 +19,7 @@ class ListFiles(Paramed, Unit):
     def out(): pass
 
     @inport
-    def ins(self, matches, tag):
+    def process(self, matches, tag):
         """ find all matching files """
         if isinstance(matches, str):
             matches = [matches]
@@ -53,7 +53,7 @@ class Reader(Paramed, Unit):
         return offset
 
     @inport
-    def ins(self, filename, tag):
+    def process(self, filename, tag):
         skip = tag.skip
         limit = tag.limit
 

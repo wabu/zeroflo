@@ -26,7 +26,7 @@ class ToSeries(Unit):
         pass
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         if not data:
             yield from pd.Series() >> tag >> self.out
             return
@@ -49,7 +49,7 @@ class ToTable(Unit):
         self.offset = 0 
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         """ port getting bytes data """
         df = pd.read_table(io.BytesIO(data), **self.opts)
         length = len(df)
@@ -68,7 +68,7 @@ class Fill(Paramed, Unit):
     def out(): pass
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         for col, fill in self.fills.items():
             data.loc[~data[col].apply(bool),col] = fill
 
@@ -84,7 +84,7 @@ class Convert(Paramed, Unit):
     def out(): pass
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         data.is_copy = None
         for col, convs in self.convs.items():
             sel = data[col]
@@ -104,7 +104,7 @@ class IndexContinued(Unit):
         self.offset = 0
 
     @inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         offset = self.offset
         self.offset = end = offset + len(data)
         data.index = np.arange(offset, end)
@@ -116,7 +116,7 @@ class Unstack(Unit):
     def out(): pass
 
     @inport
-    def ins(self, data : pd.Series, tag):
+    def process(self, data : pd.Series, tag):
         yield from data.unstack() >> tag >> self.out
 
 
@@ -129,7 +129,7 @@ class Drop(Unit):
     def out(): pass
 
     @inport
-    def ins(self, data: pd.DataFrame, tag):
+    def process(self, data: pd.DataFrame, tag):
         data = data[data.columns.difference(self.drop)]
         yield from data >> tag >> self.out
 
@@ -143,7 +143,7 @@ class Select(Unit):
     def out(): pass
 
     @inport
-    def ins(self, data: pd.DataFrame, tag):
+    def process(self, data: pd.DataFrame, tag):
         data = data[data.columns & self.select]
         yield from data >> tag >> self.out
 
@@ -199,7 +199,7 @@ class InferTypes(Unit):
         return x
 
     @inport
-    def ins(self, data : pd.DataFrame, tag):
+    def process(self, data : pd.DataFrame, tag):
         data = data.apply(self.try_convert, axis=0)
         yield from data >> tag >> self.out
 
@@ -219,7 +219,7 @@ class Grouper(Paramed, Unit):
         pass
 
     @inport
-    def ins(self, data : pd.DataFrame, tag):
+    def process(self, data : pd.DataFrame, tag):
         for grp, vals in data.groupby(self.groupby, sort=False):
             yield from vals >> tag.add(group=grp) >> self.out
 
@@ -234,6 +234,6 @@ class Query(Paramed, Unit):
         pass
 
     @inport
-    def ins(self, data : pd.DataFrame, tag):
+    def process(self, data : pd.DataFrame, tag):
         yield from data.query(self.query) >> tag >> self.out
 
