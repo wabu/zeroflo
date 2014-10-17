@@ -81,7 +81,8 @@ class Link:
 
     @delayed
     def kind(self):
-        if self.target.unit.space == self.source.unit.space:
+        if (self.target.unit.space == self.source.unit.space or
+                not self.target.unit.space.bound and not self.source.unit.space.bound):
             return 'local'
         elif self.target.unit.space.replicate:
             return 'repl'

@@ -69,7 +69,7 @@ class LocalLinker(Linker):
         try:
             return self.queues[key]
         except KeyError:
-            self.queues[key] = q = asyncio.Queue(8)
+            self.queues[key] = q = asyncio.Queue(4)
             return q
 
     @coroutine
@@ -131,9 +131,10 @@ class ZmqChan(Chan):
 
         self.__log.info('setting up %s::%s', addr, how)
 
-        stream = yield from create_zmq_stream(self.__stream_type__)
-        stream.setsockopt(zmq.SNDHWM, 32)
-        stream.setsockopt(zmq.RCVHWM, 32)
+        stream = yield from create_zmq_stream(self.__stream_type__, limit=64*1024*1024)
+        stream.setsockopt(zmq.SNDHWM, 16)
+        stream.setsockopt(zmq.RCVHWM, 16)
+        stream.set_write_buffer_limits(64*1024*1024)
         yield from getattr(stream, how)(addr)
         self.stream = stream
         return self
@@ -209,10 +210,10 @@ class ZmqLoadBalance(Chan):
         try:
             context = zmq.Context()
             incomming = context.socket(zmq.DEALER)
-            incomming.setsockopt(zmq.RCVHWM, 128)
+            incomming.setsockopt(zmq.RCVHWM, 32)
             incomming.bind('ipc://{}/chan-in'.format(self.endpoint.namespace()))
             outgoing = context.socket(zmq.REP)
-            outgoing.setsockopt(zmq.SNDHWM, 512)
+            outgoing.setsockopt(zmq.SNDHWM, 128)
             outgoing.bind('ipc://{}/chan-out'.format(self.endpoint.namespace()))
         except zmq.ZMQError as e:
             self.__log.info("failed to start %s", self, exc_info=True)

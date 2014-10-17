@@ -59,7 +59,6 @@ class Process:
         aquire = self.tracker.aquire
         @coroutine
         def handle(self, packet):
-            #yield from aquire(src, len(outs))
             aq = asyncio.gather(*(aquire(tgt) for tgt,_ in outs))
             dl = asyncio.gather(*(chan.deliver((tgt, packet)) 
                         for tgt,chan in outs))

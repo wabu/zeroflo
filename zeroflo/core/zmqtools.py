@@ -38,7 +38,7 @@ def create_zmq_stream(zmq_type, *, connect=None, bind=None, limit=None):
     logger.debug('create zmq stream %s (%s=%s)', *info)
 
     if limit is None:
-        limit = 16
+        limit = 64*1024
 
     pr = ZmqStreamProtocol(limit)
     tr,_ = yield from aiozmq.create_zmq_connection(lambda: pr, 
@@ -102,13 +102,14 @@ class ZmqStream:
             logger.debug('%s waiting for data', self)
             yield from self._pr._reading.wait()
         datas = buf.pop(0)
+        self._pr._size -= sum(len(d) for d in datas)
         if not buf:
             self._pr._reading.clear()
 
         if isinstance(datas, Exception):
             raise datas
         logger.debug('%s read %s', self, [len(p) for p in datas])
-        if self._paused and len(self._pr._buffer) <= self._limit//2:
+        if self._paused and self._pr._size <= self._limit//2:
             logger.debug('%s resumes read', self)
             self._paused = False
             self._tr.resume_reading()
@@ -118,7 +119,8 @@ class ZmqStream:
     def write(self, *datas, **kws):
         """write a multipart message"""
         logger.debug('%s writes %s', self, [len(p) for p in datas])
-        yield from self._pr._writing.wait()
+        if not self._pr._writing.is_set():
+            yield from self._pr._writing.wait()
         logger.debug('%s writing', self)
         self._tr.write(datas, **kws)
 
@@ -158,6 +160,7 @@ class ZmqStream:
 class ZmqStreamProtocol(aiozmq.ZmqProtocol):
     def __init__(self, limit):
         self._buffer = []
+        self._size = 0
         self._reading = asyncio.Event()
         self._writing = asyncio.Event()
         self._closed = asyncio.Event()
@@ -188,12 +191,15 @@ class ZmqStreamProtocol(aiozmq.ZmqProtocol):
         self._writing.set()
 
     def msg_received(self, datas):
+        if self._stream._paused:
+            logger.warning('%s recived while reading was paused', self)
         logger.debug('%s received %s', self, [len(p) for p in datas])
-        if len(self._buffer)-1 >= self._limit:
+        if self._size-1 >= self._limit:
             logger.debug('%s full, pausing read', self)
             self._stream._paused = True
             self._stream._tr.pause_reading()
         self._buffer.append(datas)
+        self._size += sum(len(d) for d in datas)
         self._reading.set()
 
     def __str__(self):

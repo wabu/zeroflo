@@ -255,9 +255,10 @@ class UnionDirectory(Directory, UnionRessource):
 
 class LocalRessource(Ressource):
     """ resource accessing local files """
-    def __init__(self, path, read=['cat']):
+    def __init__(self, path, read=['cat'], limit=64*1024*1024):
         self.path = Path(path)
         self.read = read
+        self.limit = limit
 
     @property
     @coroutine
@@ -273,7 +274,11 @@ class LocalRessource(Ressource):
     @coroutine
     def reader(self):
         proc = (yield from asyncio.create_subprocess_exec(*(self.read or [str(self.path)]), 
-                    stdout=asyncio.subprocess.PIPE))
+                    stdout=asyncio.subprocess.PIPE, limit=self.limit))
+        if not proc.stdout._transport:
+            logging.getLogger('asyncip').warning("pipe has not transport, so we're fixing this manually")
+            tr = proc._transport.get_pipe_transport(1)
+            proc.stdout.set_transport(tr)
         return proc.stdout
 
 

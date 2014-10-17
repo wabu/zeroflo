@@ -6,7 +6,7 @@ from pathlib import Path
 import itertools as it
 from contextlib import contextmanager
 
-from pyadds.logging import log
+from pyadds.logging import log, logging
 
 @log
 class ListFiles(Paramed, Unit):
@@ -114,14 +114,18 @@ class Reader(Paramed, Unit):
                     yield from data >> tag >> self.out
                 elif eof:
                     # ensure that eof gets send out
-                    yield from '' >> tag >> self.out
+                    yield from b'' >> tag >> self.out
 
 
 class PBzReader(Reader):
     @coroutine
     def open(self, filename):
         pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
-                stdout=asyncio.subprocess.PIPE)
+                stdout=asyncio.subprocess.PIPE, limit=self.chunksize*2)
+        if not pbzip2.stdout._transport:
+            logging.getLogger('asyncip').warning("pipe has not transport, so we're fixing this manually")
+            tr = pbzip2._transport.get_pipe_transport(1)
+            pbzip2.stdout.set_transport(tr)
 
         @contextmanager
         def closing():

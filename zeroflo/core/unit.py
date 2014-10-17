@@ -263,7 +263,7 @@ class CallHelper(Unit):
 class YieldHelper(Unit):
     @coroutine
     def __setup__(self):
-        self.q = asyncio.Queue()
+        self.q = asyncio.Queue(8)
 
     @inport
     def process(self, load, tag):

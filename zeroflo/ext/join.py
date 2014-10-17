@@ -9,7 +9,7 @@ from pyadds.annotate import delayed
 class Join(Unit):
     @delayed
     def q(self):
-        return asyncio.Queue()
+        return asyncio.Queue(8)
 
     @inport
     def process(self, load, tag):

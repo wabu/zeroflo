@@ -109,13 +109,13 @@ class Receiver(Resolver):
         yield from self.loops.pop(kind)
 
         if not self.loops:
-            self.queue.put((None, None))
+            yield from self.queue.put((None, None))
             yield from self.main
             self.main = None
         
     @coroutine
     def loop(self, chan):
-        self.__log.debug('looping %s: %s', self.endpoint, chan)
+        self.__log.info('looping %s: %s', self.endpoint, chan)
         fetch = chan.fetch
         put = self.queue.put
         while True:
@@ -124,7 +124,7 @@ class Receiver(Resolver):
 
     @coroutine
     def run(self):
-        self.__log.debug('running %s', self.endpoint)
+        self.__log.info('running %s', self.endpoint)
         get = self.queue.get
         prts = self.portmap
         aquire = self.tracker.aquire
