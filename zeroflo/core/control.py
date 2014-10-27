@@ -2,6 +2,8 @@ from functools import wraps
 from collections import defaultdict
 
 import asyncio
+import atexit
+import os
 from asyncio import coroutine, Task
 
 from pyadds.annotate import cached, delayed
@@ -11,7 +13,7 @@ from . import resolve
 from . import rpc
 from . import idd
 
-@log(short='prc', sign='{}')
+@log
 class Process:
     def __init__(self, tracker):
         self.tracker = tracker
@@ -69,16 +71,26 @@ class Process:
     def close(self, uid):
         ...
 
+    @coroutine
+    def shutdown(self):
+        @coroutine
+        def down():
+            self.__log.warning('just exiting, no cleanup ...')
+            yield from asyncio.sleep(1)
+            exit(0)
+        asyncio.async(down())
 
-@log(short='ctl', sign='%%')
+@log
 class Control:
     def __init__(self, *, ctx, tp):
         self.tp = tp
+        self.path = str(self.tp.path)
         self.spawner = ctx.spawner
 
         self.procs = {}
         self.units = {}
         self.queued = []
+        atexit.register(self.__del__)
 
     def queue(self, coro):
         self.queued.append(coro)
@@ -145,6 +157,16 @@ class Control:
             self.procs[space] = remote
             return remote
 
+    def __del__(self):
+        atexit.unregister(self.__del__)
+
+        self.__log.info('shuting down all processes')
+        future = asyncio.async(asyncio.gather(*[remote.shutdown() 
+                    for remote in self.procs.values()], return_exceptions=True))
+        asyncio.get_event_loop().run_until_complete(future)
+
+        self.procs.clear()
+        os.system("rm -rf {!r}".format(self.path))
     
     @coroutine
     def activate(self, unit, actives=set()):

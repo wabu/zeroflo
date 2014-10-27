@@ -5,7 +5,7 @@ import os
 
 class Source(flo.Unit):
     @flo.inport
-    def ins(self, datas, tag):
+    def process(self, datas, tag):
         print('<<', datas)
         for data in datas:
             print(os.getpid(), ' <', data)
@@ -16,7 +16,7 @@ class Source(flo.Unit):
 
 class Process(flo.Unit):
     @flo.inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         print(os.getpid(), ' !', data)
         yield from data * 2 >> tag.add(doubled=True) >> self.out
 
@@ -26,7 +26,7 @@ class Process(flo.Unit):
 
 class Sink(flo.Unit):
     @flo.inport
-    def ins(self, data, tag):
+    def process(self, data, tag):
         print(os.getpid(), '>>', data)
 
 
@@ -34,7 +34,7 @@ import asyncio
 import aiozmq
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(short)s::%(levelname)5s %(message)s')
+    logging.basicConfig(format='[%(process)d] %(levelname)5s:%(name)s %(message)s')
     logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")
@@ -54,20 +54,22 @@ if __name__ == "__main__":
         # connect flow units
         src >> prc >> snk
 
-        src & snk | prc ** 2
+        src & snk | prc
 
         print('--')
         print(repr(ctx.topology))
 
     with ctx.run():
-        src.ins(['one', 'two', 'three'])
-        src.ins(range(9))
+        src.process(['one', 'two', 'three'])
+        src.process(range(9))
 
-        src.ins.delay('abc')
-        src.ins.delay(range(3))
+        src.process.delay('abc')
+        src.process.delay(range(3))
         for i,tag in prc.out:
             print('###', i, tag, '###')
 
         print('---', ' ', '---')
         snk.join()
+
+    print('done')
 
