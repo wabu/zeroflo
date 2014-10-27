@@ -8,6 +8,7 @@ import pandas as pd
 import zlib
 import time
 
+@log
 class Watch(Unit, Paramed):
     """ watch a ressource directory for located resources becomming available """
     def __init__(self, root, locate, **kws):
@@ -22,6 +23,14 @@ class Watch(Unit, Paramed):
     def stable(self, value='30s'):
         return pd.datetools.to_offset(value)
 
+    @param
+    def skip_after(self, value='5min'):
+        return pd.datetools.to_offset(value)
+
+    @param
+    def skip_num(self, value=240):
+        return value
+
     @inport
     def process(self, start, tag):
         start = start or tag.start or '1h'
@@ -35,7 +44,7 @@ class Watch(Unit, Paramed):
         except (TypeError, ValueError):
             end = pd.Timestamp(tag.end)
 
-        print('fetching from {start} to {end}'.format(
+        self.__log.info('fetching from {start} to {end}'.format(
                     start=start, end=end or '...'))
 
         time = pd.Timestamp(start)
@@ -58,9 +67,28 @@ class Watch(Unit, Paramed):
                 stat = yield from res.stat
                 if stat:
                     break
+
                 wait = (pd.Timestamp('now')-loc.available).total_seconds()
+                if pd.Timestamp('now') > loc.available + self.skip_after:
+                    skip_loc = loc
+                    for k in range(1, self.skip_num+1):
+                        skip_loc = locate.location(skip_loc.end)
+                        skip_res = root.open(skip_loc.path)
+                        stat = yield from skip_res.stat
+                        if stat:
+                            self.__log.warning('skipped %d to %s (%s)', 
+                                    k, skip_loc.path, skip_loc.available)
+                            res = skip_res
+                            loc = skip_loc
+                            break
+                        if skip_loc.available > pd.Timestamp('now'):
+                            break
+                if stat:
+                    break
+
                 print('awating %s for %ds' % (loc.path, wait), end='\033[J\r')
-                yield from asyncio.sleep(.2)
+                yield from asyncio.sleep(min(max(.2, wait/20), 2))
+
 
             stable = (pd.Timestamp('now') - loc.available) > self.stable.delta
 
@@ -69,14 +97,14 @@ class Watch(Unit, Paramed):
 
 
 @log
-class Fetch(Unit, Paramed):
+class Fetch(Paramed, Unit):
     """ fetch resources in chunks """
     def __init__(self, root, **kws):
         super().__init__(**kws)
         self.root = root
 
     @param
-    def chunksize(self, chunksize='16m'):
+    def chunksize(self, chunksize='15m'):
         return param.sizeof(chunksize)
 
     @outport
