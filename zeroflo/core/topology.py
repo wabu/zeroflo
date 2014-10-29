@@ -4,6 +4,8 @@ from pyadds.annotate import delayed
 
 from .idd import Idd, Id
 
+import os
+
 class Unit(Idd):
     """ topology info of a unit """
 
@@ -34,7 +36,10 @@ class Space(Idd):
         self.bound = False
 
     def __str__(self):
-        return '{{{}}}'.format(','.join(map(str, self.units)))
+        units = self.units
+        if len(units) > 4:
+            units = units[:2] + ['..'] + units[-1:]
+        return '{{{}}}'.format(','.join(map(str, units)))
 
     def __repr__(self):
         return '{}@{!r}'.format(self, self.id)
@@ -104,7 +109,7 @@ def dlist():
 class Topology(Idd):
     """ the flow topology object """
     def __init__(self, name='ctx', **kws):
-        super().__init__(name=name, **kws)
+        super().__init__(name=name, idd=os.getpid(), **kws)
 
         self.units = {}
         self.spaces = {}

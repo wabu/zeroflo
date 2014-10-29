@@ -1,18 +1,26 @@
 from pyadds.annotate import Named, delayed, cached
 from pyadds.str import name_of
 
-from collections import namedtuple
+from collections import namedtuple, Counter
 from pathlib import Path
 from os.path import join as join_path
 
 import traceback
 
+__idds__ = Counter()
+
 class Id(namedtuple('IdBase', 'name, idd')):
+    def __new__(cls, name, idd=None):
+        if idd is None:
+            idd = __idds__['name']+1
+            __idds__['name'] = idd
+        return super().__new__(cls, name, idd)
+
     def __str__(self):
         return self.name
 
     def __repr__(self):
-        return '{}-{:x}'.format(self.name, self.idd)
+        return '{}-{}'.format(self.name, self.idd)
 
     def __hash__(self):
         return hash(self.idd)
@@ -100,8 +108,7 @@ class IdPath(namedtuple('IdPathBase', 'refs, ids')):
 class Idd:
     __by__ = None
     def __init__(self, *args, name=None, idd=None, by=None, **kws):
-        self.id = Id(name or name_of(self), 
-                     idd or id(self))
+        self.id = Id(name or name_of(self), idd)
 
         by = by or self.__by__
         if not by:
