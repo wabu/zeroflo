@@ -138,7 +138,7 @@ class Control:
 
                 remote = rpc.Remote(Process(tracker=self.tracker), endpoint=path)
 
-                proc = yield from self.spawner.cospawn(remote.__remote__, __name__=repr(space))
+                proc = yield from self.spawner.cospawn(remote.__remote__, __name__=str(space))
                 with open(path.namespace()+'/pids', 'a') as f:
                     f.write('{}\n'.format(proc.pid))
                 
@@ -160,12 +160,13 @@ class Control:
     def __del__(self):
         atexit.unregister(self.__del__)
 
-        self.__log.info('shuting down all processes')
-        future = asyncio.async(asyncio.gather(*[remote.shutdown() 
-                    for remote in self.procs.values()], return_exceptions=True))
-        asyncio.get_event_loop().run_until_complete(future)
+        if self.procs:
+            self.__log.info('shuting down all processes')
+            future = asyncio.async(asyncio.gather(*[remote.shutdown() 
+                        for remote in self.procs.values()], return_exceptions=True))
+            asyncio.get_event_loop().run_until_complete(future)
 
-        self.procs.clear()
+            self.procs.clear()
         os.system("rm -rf {!r}".format(self.path))
     
     @coroutine

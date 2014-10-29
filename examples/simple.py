@@ -34,7 +34,7 @@ import asyncio
 import aiozmq
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(levelname)5s:%(name)s %(message)s')
+    logging.basicConfig(format='%(asctime)s %(levelname)-7s%(processName)16s|%(name)-24s\t%(message)s')
     logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
     #logging.getLogger('zeroflo.core.flow').setLevel("DEBUG")

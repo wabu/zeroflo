@@ -33,7 +33,7 @@ The distribute into different process spaces is arbitrary,
 but shows how easy it es to setup distributed flows.
 """
 
-@log(short='lag')
+@log
 class Lag(flo.Unit):
     def __init__(self, *args, **kws):
         super().__init__(*args, **kws)
@@ -55,7 +55,7 @@ class Lag(flo.Unit):
         self.last = i
 
 
-@log(short='add')
+@log
 class Add(flo.Unit):
     @flo.outport
     def out(i, tag): pass
@@ -77,7 +77,7 @@ class Add(flo.Unit):
         yield from self.add(b=b, tag=tag)
 
 
-@log(short='prt')
+@log
 class Print(flo.Unit):
     @flo.inport
     def ins(self, o, tag):
@@ -86,7 +86,7 @@ class Print(flo.Unit):
         print('>>', o)
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(short)s::%(levelname)5s %(message)s')
+    logging.basicConfig(format='[%(process)d] %(levelname)5s:%(name) s%(message)s')
     logging.getLogger('zeroflo').setLevel("DEBUG")
     #logging.getLogger('examples').setLevel("DEBUG")
     #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         add.out >> prt.ins
 
         # specifiy distribution
-        add & lag & prt
+        add & prt | lag
 
     with ctx.run():
         # simple call to trigger flow
@@ -120,4 +120,5 @@ if __name__ == "__main__":
         add.b(0)
         print('--')
         add.b(1)
+        prt.join()
 
