@@ -9,7 +9,7 @@ import zlib
 import time
 
 @log
-class Watch(Unit, Paramed):
+class Watch(Paramed, Unit):
     """ watch a ressource directory for located resources becomming available """
     def __init__(self, root, locate, **kws):
         super().__init__(**kws)
@@ -35,27 +35,29 @@ class Watch(Unit, Paramed):
     def process(self, start, tag):
         start = start or tag.start or '1h'
         try:
-            start = pd.Timestamp('now') - pd.datetools.to_offset(start)
+            start = pd.Timestamp('now', tz=tag.tz) - pd.datetools.to_offset(start)
         except ValueError:
-            start = pd.Timestamp(start or tag.start)
+            start = pd.Timestamp(start or tag.start, tz=tag.tz)
+
+        tz = start.tz
 
         try:
             end = start + pd.datetools.to_offset(tag.end)
         except (TypeError, ValueError):
-            end = pd.Timestamp(tag.end)
+            end = pd.Timestamp(tag.end, tz=tz)
 
         self.__log.info('fetching from {start} to {end}'.format(
                     start=start, end=end or '...'))
 
-        time = pd.Timestamp(start)
+        time = pd.Timestamp(start, tz=tz)
         locate = self.locate
         root = self.root
 
-        while not time > end:
+        while not time >= end:
             # wait until file may become available
             loc = locate.location(time)
             while True:
-                wait = (loc.available - pd.Timestamp('now')).total_seconds()
+                wait = (loc.available - pd.Timestamp('now', tz=tz)).total_seconds()
                 if wait <= 0:
                     break
                 print('waiting %ds for %s' % (wait, loc.path), end='\033[J\r')
@@ -68,8 +70,8 @@ class Watch(Unit, Paramed):
                 if stat:
                     break
 
-                wait = (pd.Timestamp('now')-loc.available).total_seconds()
-                if pd.Timestamp('now') > loc.available + self.skip_after:
+                wait = (pd.Timestamp('now', tz=tz)-loc.available).total_seconds()
+                if pd.Timestamp('now', tz=tz) > loc.available + self.skip_after:
                     skip_loc = loc
                     for k in range(1, self.skip_num+1):
                         skip_loc = locate.location(skip_loc.end)
@@ -81,7 +83,7 @@ class Watch(Unit, Paramed):
                             res = skip_res
                             loc = skip_loc
                             break
-                        if skip_loc.available > pd.Timestamp('now'):
+                        if skip_loc.available > pd.Timestamp('now', tz=tz):
                             break
                 if stat:
                     break
@@ -90,7 +92,7 @@ class Watch(Unit, Paramed):
                 yield from asyncio.sleep(min(max(.2, wait/20), 2))
 
 
-            stable = (pd.Timestamp('now') - loc.available) > self.stable.delta
+            stable = (pd.Timestamp('now', tz=tz) - loc.available) > self.stable.delta
 
             yield from loc.path >> tag.add(stable=stable, **loc._asdict()) >> self.out
             time = loc.end

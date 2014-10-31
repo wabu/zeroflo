@@ -59,6 +59,24 @@ class ToTable(Unit):
         yield from df >> tag.add(length=length) >> self.out
 
 
+class DumpTable(Unit):
+    def __init__(self, **opts):
+        super().__init__()
+        self.opts = opts
+
+    @outport
+    def out():
+        """ port for framed data """
+
+    @inport
+    def process(self, data, tag):
+        """ port getting bytes data """
+        out = io.StringIO()
+        data.to_csv(out, **self.opts)
+
+        yield from out.getvalue().encode() >> tag >> self.out
+
+
 class Fill(Paramed, Unit):
     @param
     def fills(self, val={}):

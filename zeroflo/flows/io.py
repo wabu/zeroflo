@@ -123,7 +123,8 @@ class PBzReader(Reader):
         pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
                 stdout=asyncio.subprocess.PIPE, limit=self.chunksize*2)
         if not pbzip2.stdout._transport:
-            logging.getLogger('asyncip').warning("pipe has not transport, so we're fixing this manually")
+            logging.getLogger('asyncio').warning(
+                    "pipe has not transport, so we're fixing this manually")
             tr = pbzip2._transport.get_pipe_transport(1)
             pbzip2.stdout.set_transport(tr)
 
@@ -139,3 +140,44 @@ class PBzReader(Reader):
                 asyncio.async(pbzip2.wait())
                 raise
         return closing()
+
+@log
+class Writer(Paramed, Unit):
+    @param
+    def filename(self, val):
+        return val
+
+    @coroutine
+    def __setup__(self):
+        self.f = yield from self.open(self.filename)
+
+    @coroutine
+    def __teardown__(self):
+        self.f.close()
+        yield from self.f.drain()
+
+    @inport
+    def process(self, data, tag):
+        self.f.write(data)
+        yield from self.f.drain()
+
+
+class PBzWriter(Writer):
+    @param
+    def limit(self, val='63m'):
+        return param.sizeof(val)
+
+    @coroutine
+    def open(self, filename):
+        pbzip2 = yield from asyncio.create_subprocess_shell(
+                'pbzip2 -c > {}'.format(filename),
+                stdin=asyncio.subprocess.PIPE, limit=self.limit)
+
+        if not pbzip2.stdin._transport:
+            logging.getLogger('asyncio').warning(
+                    "pipe has not transport, so we're fixing this manually")
+            tr = pbzip2._transport.get_pipe_transport(0)
+            pbzip2.stdin.set_transport(tr)
+
+        return pbzip2.stdin
+

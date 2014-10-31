@@ -7,6 +7,7 @@ coroutine = asyncio.coroutine
 
 from collections import namedtuple
 from pathlib import Path
+import logging
 
 size_suffixes = ['k', 'm', 'g', 't', 'p']
 def strtosize(s):
@@ -193,7 +194,7 @@ class LocateByTime():
 
     def location(self, time='now'):
         time = pd.Timestamp(time)
-        start = pd.Timestamp(time.value // self.width.nanos * self.width.nanos)
+        start = pd.Timestamp(time.value // self.width.nanos * self.width.nanos, tz=time.tz)
         return Location(self.convert(start), start, start+self.width, start+self.width+self.delay)
 
 
@@ -267,18 +268,20 @@ class LocalRessource(Ressource):
             path = self.path
             stat = path.stat()
             return Stats(path.name, path.is_dir(), 
-                    pd.Timestamp(stat.st_mtime, unit='s', tz=pd.datetools.dateutil.tz.tzlocal()), stat.st_size)
+                    pd.Timestamp(stat.st_mtime, unit='s', 
+                        tz=pd.datetools.dateutil.tz.tzlocal()), stat.st_size)
         except FileNotFoundError:
             return
 
     @coroutine
-    def reader(self):
-        proc = (yield from asyncio.create_subprocess_exec(*(self.read or [str(self.path)]), 
+    def reader(self, offset=None):
+        proc = (yield from asyncio.create_subprocess_exec(*(self.read + [str(self.path)]), 
                     stdout=asyncio.subprocess.PIPE, limit=self.limit))
         if not proc.stdout._transport:
-            logging.getLogger('asyncip').warning("pipe has not transport, so we're fixing this manually")
             tr = proc._transport.get_pipe_transport(1)
             proc.stdout.set_transport(tr)
+        if offset:
+            yield from proc.stdout.readexactly(offset)
         return proc.stdout
 
 
@@ -289,8 +292,7 @@ class LocalDirectory(LocalRessource, Directory):
         return [p.name for p in self.path.iterdir()]
 
     def open(self, name: str):
-        read = self.read or {}
-        return LocalRessource(str(self.path / name), read=read.get((self.path/name).suffix[1:]))
+        return LocalRessource(str(self.path / name), read=self.read)
 
     def go(self, name: str):
         return LocalDirectory(str(self.path / name))
