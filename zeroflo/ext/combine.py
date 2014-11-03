@@ -30,7 +30,7 @@ from pyadds.annotate import Annotate, ObjDescr, Get
 
 from pyadds.logging import log
 
-@log(short='cmb', sign=':>')
+@log
 class Combiner:
     def __init__(self, obj, f):
         spec = inspect.getfullargspec(f)
@@ -43,7 +43,7 @@ class Combiner:
             slot.set()
         self.vals = {}
         self.tag = Tag()
-        print('done')
+        self.__log.debug('init %x with %x by %x.%x', id(self), id(self.vals), id(self.obj), id(f))
 
     @coroutine
     def flush(self):
@@ -86,7 +86,7 @@ class Combiner:
     def __str__(self):
         return 'combine:{} {}'.format(self.name, 
                 '|'.join('{}{}={}'.format('.' if slot.is_set() else '!', 
-                        key, self.vals.get(key, '_')>>Tag())
+                        key, self.vals.get(key, '_'))
                     for key,slot in sorted(self.slots.items())))
 
 class combine(Annotate, ObjDescr, Get):

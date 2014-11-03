@@ -29,7 +29,10 @@ class Process:
 
     @coroutine
     def register(self, unit, outs, ins):
-        if not unit.id.idd in self.units:
+        self.__log.debug('register %r/%x', unit, id(unit))
+        try:
+            unit = self.units[unit.id.idd]
+        except KeyError:
             yield from unit.__setup__()
             self.units[unit.id.idd] = unit
 
@@ -100,7 +103,8 @@ class Control:
         def replay():
             for coro in self.queued:
                 yield from coro
-        return asyncio.async(replay())
+        yield from replay()
+        #return asyncio.async(replay())
 
     @cached
     def local(self):

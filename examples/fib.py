@@ -17,17 +17,17 @@ A simple printer is used to show the results
 
 Here's the flow diagram showing the wireing:
 ```
-  ~ space {add} ~      | ~ space {print,lag} ~
-                       |
-                       |
-   .----------------.  |
-  :                _.` |
-  `-> a][add][out =----|-> ins][print]
-  .-> b]           `.  |   
-  :                  `-|-> ins][delay][out -.
-  :                    |                    :
-  `--------------------|--------------------`
-                       |
+  ~ space {add} ~    | ~ space {print,lag} ~
+                     |
+                     |
+   .--------------.  |
+  :              _.` |
+  `-> a]add[out =----|-> ins]print
+  .-> b]         `.  |   
+  :                `-|-> ins]lag[out -.
+  :                  |                :
+  `------------------|----------------`
+                     |
 ```
 The distribute into different process spaces is arbitrary,
 but shows how easy it es to setup distributed flows.
@@ -44,7 +44,6 @@ class Lag(flo.Unit):
 
     @flo.inport
     def ins(self, i, tag):
-        print('lag', i >> tag)
         if self.setup:
             self.__log.debug('>> %d << %d', self.last, i)
             yield from self.last >> tag.add(lag=1) >> self.out
@@ -86,11 +85,11 @@ class Print(flo.Unit):
         print('>>', o)
 
 def setup_logging():
-    logging.basicConfig(format='[%(process)d] %(levelname)5s:%(name) s%(message)s')
-    logging.getLogger('zeroflo').setLevel("DEBUG")
-    #logging.getLogger('examples').setLevel("DEBUG")
-    #logging.getLogger('zeroflo.tools').setLevel("DEBUG")
-    logging.getLogger('zeroflo.core.zmqtools').setLevel("INFO")
+    logging.basicConfig(format='%(asctime)s %(levelname)-7s%(processName)16s|%(name)-24s\t%(message)s')
+    logging.getLogger('zeroflo').setLevel("INFO")
+    #logging.getLogger('zeroflo.ext').setLevel("DEBUG")
+    #logging.getLogger('zeroflo.core.control.Process').setLevel("DEBUG")
+    #logging.getLogger('zeroflo.core.zmqtools').setLevel("INFO")
 
 
 if __name__ == "__main__":
@@ -118,7 +117,7 @@ if __name__ == "__main__":
         # simple call to trigger flow
         add.a(0)
         add.b(0)
-        print('--')
         add.b(1)
+        
         prt.join()
 

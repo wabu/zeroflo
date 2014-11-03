@@ -72,6 +72,18 @@ class Port(Idd):
         return '{!r}.{}'.format(self.unit, self.port)
 
 
+class Bundle:
+    def __init__(self, items=[]):
+        self.items = list(items)
+
+    def units(self):
+        for item in self.items:
+            if isinstance(item, Unit):
+                yield item
+            else:
+                yield from item.units()
+
+
 class Link:
     """ topology info for a link """
     def __init__(self, source, target, hints=None, **kws):
