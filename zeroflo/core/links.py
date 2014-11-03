@@ -177,14 +177,23 @@ class ZmqReplicate(ZmqLinker):
 @log
 class ZmqClient(ZmqOut):
     __stream_address__ = 'ipc://{}/chan-in'
+    proc = None
 
     @coroutine
     def setup(self):
         self.__log.debug('%s spawning zlb', self)
         lb = ZmqLoadBalance(self.endpoint)
-        proc = spawn.get_spawner().spawn(lb.run)
-        self.__log.debug('%s spawned zlb %s', self, proc)
+        self.proc = spawn.get_spawner().spawn(lb.run)
+        self.__log.debug('%s spawned zlb %s', self, self.proc)
         yield from super().setup()
+
+    @coroutine
+    def close(self):
+        if self.proc:
+            self.__log.info('killing zmq proc %s', self.proc)
+            self.proc.terminate()
+            del self.proc
+
 
 @log
 class ZmqWorker(ZmqIn):

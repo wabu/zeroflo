@@ -36,24 +36,24 @@ class Process:
             yield from unit.__setup__()
             self.units[unit.id.idd] = unit
 
-        for l in ins:
-            yield from self.receiver[l.endpoint].register(unit, l)
-
         for l in outs:
             chan = yield from self.deliver[l.endpoint].register(unit, l)
             outs = self.outs[l.source.pid]
             out = (l.target.pid, chan)
             if out not in outs:
                 outs.append(out)
-            l.source.of(unit).handle = self.handler(l.source.pid)
+                l.source.of(unit).handle = self.handler(l.source.pid)
+
+        for l in ins:
+            yield from self.receiver[l.endpoint].register(unit, l)
             
     @coroutine
     def activate(self, outs, ins):
-        for l in ins:
-            yield from self.receiver[l.endpoint].activate(l)
-
         for l in outs:
             yield from self.deliver[l.endpoint].activate(l)
+
+        for l in ins:
+            yield from self.receiver[l.endpoint].activate(l)
 
     @coroutine
     def info(self):
@@ -78,8 +78,9 @@ class Process:
     def shutdown(self):
         @coroutine
         def down():
-            self.__log.warning('just exiting, no cleanup ...')
-            yield from asyncio.sleep(1)
+            self.__log.info('shutdown closes all channels')
+            yield from asyncio.gather(*(
+                    chan.close() for outs in self.outs.values() for _,chan in outs))
             exit(0)
         asyncio.async(down())
 
@@ -91,6 +92,7 @@ class Control:
         self.spawner = ctx.spawner
 
         self.procs = {}
+        self.remotes = {}
         self.units = {}
         self.queued = []
         atexit.register(self.__del__)
@@ -130,12 +132,12 @@ class Control:
             return self.local
 
         try:
-            return self.procs[space]
+            return self.remotes[space]
         except KeyError:
             self.__log.debug('spawning for {!r}'.format(space))
 
             @coroutine
-            def init_remote(i=None):
+            def init_rpc(i=None):
                 path = space.path
                 if i is not None:
                     path += idd.Named('replicate', 'rep-'+str(i))
@@ -149,16 +151,20 @@ class Control:
                 yield from remote.__setup__()
 
                 yield from remote.setup()
-                return remote
+                return remote,proc
 
             if space.replicate:
-                remotes = yield from asyncio.gather(*(
-                            init_remote(i) for i in range(space.replicate)))
+                rpcs = yield from asyncio.gather(*(
+                            init_rpc(i) for i in range(space.replicate)))
+                remotes = [r for r,_ in rpcs]
+                procs   = [p for _,p in rpcs]
                 remote = rpc.Multi(remotes)
             else:
-                remote = yield from init_remote()
+                remote,proc = yield from init_rpc()
+                procs = [proc]
 
-            self.procs[space] = remote
+            self.remotes[space] = remote
+            self.procs[space] = procs
             return remote
 
     def __del__(self):
@@ -166,11 +172,25 @@ class Control:
 
         if self.procs:
             self.__log.info('shuting down all processes')
-            future = asyncio.async(asyncio.gather(*[remote.shutdown() 
-                        for remote in self.procs.values()], return_exceptions=True))
+            @coroutine
+            def shutdown(remote, procs):
+                try:
+                    yield from asyncio.wait_for(remote.shutdown(), timeout=5)
+                except asyncio.TimeoutError:
+                    self.__log.warn("can't shutdown %s properly, killing it", set(procs))
+                    for p in procs:
+                        p.terminate()
+
+            future = asyncio.gather(*[shutdown(remote, proc)
+                        for remote,proc in zip(self.remotes.values(), self.procs.values())], 
+                        return_exceptions=True)
             asyncio.get_event_loop().run_until_complete(future)
+            for r in future:
+                if r:
+                    self.__log.warn('%r when shuting down', r)
 
             self.procs.clear()
+            self.remotes.clear()
         os.system("rm -rf {!r}".format(self.path))
     
     @coroutine

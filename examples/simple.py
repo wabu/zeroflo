@@ -54,7 +54,7 @@ if __name__ == "__main__":
         # connect flow units
         src >> prc >> snk
 
-        src & snk | prc
+        src & snk | prc ** 2
 
         print('--')
         print(repr(ctx.topology))
