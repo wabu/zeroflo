@@ -24,6 +24,10 @@ class Unit:
     def __setup__(self):
         pass
 
+    @coroutine
+    def __teardown__(self):
+        pass
+
     @cached
     def ports(self):
         """ports of the unit"""
