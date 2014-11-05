@@ -158,7 +158,7 @@ class Writer(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        self.f.write(data)
+        self.f.write(data+b'\n')
         yield from self.f.drain()
 
 

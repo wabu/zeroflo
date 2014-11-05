@@ -81,6 +81,8 @@ class Process:
             self.__log.info('shutdown closes all channels')
             yield from asyncio.gather(*(
                     chan.close() for outs in self.outs.values() for _,chan in outs))
+            yield from asyncio.gather(*(
+                    unit.__teardown__() for unit in self.units.values()))
             exit(0)
         asyncio.async(down())
 
