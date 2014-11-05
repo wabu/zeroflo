@@ -83,7 +83,8 @@ class Reader(Paramed, Unit):
                     if rest:
                         rest, = rest
                     else:
-                        rest = b''
+                        rest = last
+                        last = b''
                 else:
                     last = chunk
 

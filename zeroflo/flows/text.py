@@ -27,17 +27,16 @@ class Lines(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        rest = self.rest
+        #rest = self.rest
 
-
-        *lines,rest = (rest+data).split(self.seperator)
-        if tag.flush:
-            if rest.strip():
-                lines.append(rest)
-            rest=self.empty
-
+        #*lines,rest = (rest+data).split(self.seperator)
+        #if tag.flush:
+        #    if rest.strip():
+        #        lines.append(rest)
+        #    rest=self.empty
+        lines = data.split(self.seperator)
         yield from lines >> tag >> self.out
-        self.rest = rest
+        #self.rest = rest
 
 
 @log
