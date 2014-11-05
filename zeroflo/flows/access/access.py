@@ -271,10 +271,10 @@ class Gunzip(Unit):
         if not tag.flush:
             data,*rest = data.rsplit(b'\n', 1)
             if rest:
-                rest = b'\n'.join(rest)
+                rest, = rest
             else:
                 rest = data
-                out = b''
+                data = b''
 
         self.rest = rest
         size = len(data)
