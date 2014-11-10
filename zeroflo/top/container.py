@@ -1,29 +1,24 @@
 from functools import reduce
-from collections import namedtuple, defaultdict
+from collections import defaultdict
+
 
 class Container:
     """
     containter class creating element ids sparsly
 
-    >>> c = Container()
-    >>> c.add('a')
-        0
-    >>> c.add('b')
-        1
-    >>> c.add('c')
-        2
+    >>> c = Container(['a','b','c'])
+    >>> c
+        [0: 'a',
+         1: 'b',
+         2: 'c']
     >>> c[2]
         'c'
     >>> c.lookup('a')
         0
-    >>> c
-        [0: 'a', 
-         1: 'b', 
-         2: 'c']
     >>> c.remove('b')
         1
     >>> c
-        [0: 'a', 
+        [0: 'a',
          2: 'c']
     >>> c.add('d')
         1
@@ -34,10 +29,12 @@ class Container:
     >>> c.add('d')
         1
     """
-    def __init__(self):
+    def __init__(self, items=[]):
         self._free = []
-        self._nums = {}
         self._items = {}
+        self._nums = {}
+
+        self.extend(items)
 
     def add(self, item):
         try:
@@ -50,6 +47,10 @@ class Container:
             self._nums[item] = i
             self._items[i] = item
             return i
+
+    def extend(self, items):
+        for i in items:
+            self.add(i)
 
     def lookup(self, item):
         return self._nums[item]
@@ -64,11 +65,17 @@ class Container:
         return self._items[i]
 
     def __iter__(self):
-        return iter(self._nums.keys())
+        return map(lambda x: x[1], self.items())
 
     def items(self):
-        for item, i in self._nums.items():
-            yield i,item
+        return sorted(self._items.items())
+
+    def __str__(self):
+        return '[{}]'.format(', '.join(map(str, self)))
+
+    def __repr__(self):
+        its = ('{}: {}'.format(*it) for it in self.items())
+        return '[{}]'.format('\n '.join(its))
 
 
 class RefersMixin:
@@ -86,19 +93,23 @@ class RefersMixin:
 
 
 class RefContainer(RefersMixin, Container):
-    """ 
-    containter with elements refered by an outside reference 
     """
-    def __init__(self):
-        super().__init__()
+    containter with elements refered by an outside reference
+    """
+    def __init__(self, items={}):
         self._refers = defaultdict(set)
         self._refered = defaultdict(set)
+        super().__init__(items=items)
 
     def add(self, item, ref):
         i = super().add(item)
         self._refers[ref].add(i)
         self._refered[i].add(ref)
         return i
+
+    def extend(self, items):
+        for item, ref in items.items():
+            self.add(item, ref)
 
     def remove(self, item):
         i = super().remove(item)
@@ -112,41 +123,43 @@ class RefContainer(RefersMixin, Container):
 
 class AssocContainer(RefersMixin, Container):
     """
-    containter where elements are namedtuples with components refering to tuple 
+    containter where elements are namedtuples with components refering to tuple
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, items=[]):
         self._assocs = defaultdict(lambda: defaultdict(set))
-
+        super().__init__(items=items)
 
     def add(self, item):
         i = super().add(item)
-        for name,ref in item._asdict().items():
+        for name, ref in item._asdict().items():
             self._assocs[name][ref].add(i)
+        return i
 
     def remove(self, item):
         i = super().remove(item)
-        for name,ref in item._asdict().items():
+        for name, ref in item._asdict().items():
             self._remove_ref(ref, i, refdct=self._assocs[name])
         return i
 
     def refers(self, **refs):
-        return self._reduce_refs(self._assocs[name] for name,_ in refs.items())
+        return self._reduce_refs(self._assocs[name].get(val, set())
+                                 for name, val in refs.items())
 
 
 class SetsContainer(RefersMixin, Container):
     """
     containter where items of element sets refer to there containing sets
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, items=[]):
         self._refers = defaultdict(set)
+        super().__init__(items=items)
 
     def add(self, items):
         items = tuple(set(items))
         i = super().add(items)
         for ref in items:
             self._refers[ref].add(i)
+        return i
 
     def lookup(self, items):
         items = tuple(set(items))
@@ -168,26 +181,36 @@ class SetsContainer(RefersMixin, Container):
 
 class GroupedContainer(SetsContainer):
     def join(self, *items):
+        new = set(items)
         grps = [grp for grp in self
-                if grp.intersection(items)]
+                if new.intersection(grp)]
 
         if len(grps) > 1:
             raise IndexError('items of different groups cannot be joined')
         elif grps:
             grp, = grps
             i = self.remove(grp)
-            j = self.add(grp.union(items))
-            assert i==j
+            j = self.add(new.union(grp))
+            assert i == j
         else:
             self.add(items)
-        
+
     def part(self, *items):
         new = set(items)
         for grp in self:
-            if len(grp.intersection(items)) > 1:
+            if len(new.intersection(grp)) > 1:
                 raise IndexError('cannot part items of the same group')
-            new -= grp
+            new -= set(grp)
 
         for item in new:
             self.add({item})
-            
+
+    def dismiss(self, item):
+        i, = self.refers(item)
+        items = self[i]
+        self.remove(items)
+        items.remove(item)
+        if items:
+            j = self.add(items)
+            assert i == j
+        return i
