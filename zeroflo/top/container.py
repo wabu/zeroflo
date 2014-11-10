@@ -64,6 +64,10 @@ class Container:
     def __getitem__(self, i):
         return self._items[i]
 
+    def __delitem__(self, i):
+        item = self[i]
+        self.remove(item)
+
     def __iter__(self):
         return map(lambda x: x[1], self.items())
 
@@ -178,6 +182,16 @@ class SetsContainer(RefersMixin, Container):
     def refers(self, *items):
         return self._reduce_refs(self._refers[ref] for ref in items)
 
+    def dismiss(self, item):
+        for i in self.refers(item):
+            items = self[i]
+            self.remove(items)
+            items.remove(item)
+            if items:
+                j = self.add(items)
+                assert i == j
+            yield i, items
+
 
 class GroupedContainer(SetsContainer):
     def join(self, *items):
@@ -204,13 +218,3 @@ class GroupedContainer(SetsContainer):
 
         for item in new:
             self.add({item})
-
-    def dismiss(self, item):
-        i, = self.refers(item)
-        items = self[i]
-        self.remove(items)
-        items.remove(item)
-        if items:
-            j = self.add(items)
-            assert i == j
-        return i

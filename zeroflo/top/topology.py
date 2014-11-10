@@ -1,15 +1,21 @@
-from .container import Container
+from .container import (Container,
+                        RefContainer,
+                        AssocContainer,
+                        SetsContainer,
+                        GroupedContainer)
+
+from collections import namedtuple
 
 Link = namedtuple('Link', 'sid, tid')
+
 
 class Topology:
     def __init__(self):
         self.units = Container()
 
-        self.inports = RefContainer()
-        self.outports = RefContainer()
+        self.tgtports = RefContainer()
+        self.srcports = RefContainer()
 
-        # links refered by sources/targets
         self.links = AssocContainer()
 
         self.bundles = SetsContainer()
@@ -19,52 +25,50 @@ class Topology:
         return self.units.add(unit)
 
     def unregister(self, unit):
-        uid = self.units[unit]
+        uid = self.units.lookup(unit)
 
-        for sid in self.outports.refers(uid):
-            for link in self.links.refers(sid=sid)
+        for sid in self.srcports.refers(uid):
+            for link in self.links.refers(sid=sid):
                 self.unlink(*link)
+            self.srcports.remove(sid)
 
-        for tid in self.inports.refers(uid):
-            for link in self.links.refers(tid=tid)
+        for tid in self.tgtports.refers(uid):
+            for link in self.links.refers(tid=tid):
                 self.unlink(*link)
+            self.tgtports.remove(tid)
 
-        for bid in self.bundles.refers(uid):
-            bundle = self.bundles[bid]
-            if bundle == {unit}
-
-        for bid in self.bundle_ref[uid]:
-            uids = self.bundles.get(bid)
-            uids.remove(uid)
-            if not uids:
-                self.unbundle(uids)
+        # TODO broadcast as we use container methods
+        self.bundels.dismiss(uid)
+        self.spaces.dismiss(uid)
 
         self.units.remove(unit)
 
     def link(self, source, target):
-        sid = self.outports.add(source, ref=self.units.lookup(source.unit))
-        tid = self.inports.add(target, ref=self.unitslookup(target.unit))
+        sid = self.srcports.add(source, ref=self.units.lookup(source.unit))
+        tid = self.tgtports.add(target, ref=self.units.lookup(target.unit))
         link = Link(sid, tid)
 
         return self.links.add(link)
 
-    def unlink(self, inport, outport):
-        sid = self.outports.add(source, self.units[source.unit])
-        tid = self.inports.add(target, self.units[target.unit])
+    def unlink(self, source, target):
+        sid = self.srcports.add(source, ref=self.units.lookup(source.unit))
+        tid = self.tgtports.add(target, ref=self.units.lookup(target.unit))
         link = Link(sid, tid)
 
         self.links.remove(link)
 
     def bundle(self, units):
-        uids = {self.units[u] for u in units}
+        uids = {self.units.lookup(u) for u in units}
         return self.bundles.add(uids)
 
     def unbundle(self, units):
-        uids = {self.units[u] for u in units}
+        uids = {self.units.lookup(u) for u in units}
         self.bundles.remove(uids)
 
-    def join(self, a, b):
-        self.spaces.join(a,b)
+    def join(self, *units):
+        uids = {self.units.lookup(u) for u in units}
+        self.spaces.join(*uids)
 
-    def part(self, a, b):
-        self.spaces.part(a,b)
+    def part(self, *units):
+        uids = {self.units.lookup(u) for u in units}
+        self.spaces.part(*uids)
