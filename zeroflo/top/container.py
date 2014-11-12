@@ -4,29 +4,29 @@ from collections import defaultdict
 
 class Container:
     """
-    containter class creating element ids sparsly
+    containter class creating static element ids sparsly
 
-    >>> c = Container(['a','b','c'])
-    >>> c
+    >>> cnt = Container(['a','b','c'])
+    >>> cnt
         [0: 'a',
          1: 'b',
          2: 'c']
-    >>> c[2]
+    >>> cnt[2]
         'c'
-    >>> c.lookup('a')
+    >>> cnt.lookup('a')
         0
-    >>> c.remove('b')
+    >>> cnt.remove('b')
         1
-    >>> c
+    >>> cnt
         [0: 'a',
          2: 'c']
-    >>> c.add('d')
+    >>> cnt.add('d')
         1
-    >>> c
+    >>> cnt
         [0: 'a',
          1: 'd',
          2: 'c']
-    >>> c.add('d')
+    >>> cnt.add('d')
         1
     """
     def __init__(self, items=[]):
