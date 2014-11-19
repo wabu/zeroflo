@@ -3,6 +3,22 @@ from pyadds.logging import *
 
 import re
 
+class RemoveNullBytes(Unit):
+    @param
+    def null(self, val=b'\x00'):
+        return val
+
+    @param
+    def replace(self, val=b''):
+        return val
+
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        yield from data.replace(self.null, self.replace) >> tag >> self.out
+
 class Decode(Unit):
     @outport
     def out(): pass

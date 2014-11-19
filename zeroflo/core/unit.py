@@ -19,7 +19,7 @@ class Unit:
     def __init__(self, *, ctx=None, name=None):
         self.name = name or name_of(self)
         self.id = ctx.register(self).id
-
+        
     @coroutine
     def __setup__(self):
         pass
@@ -255,6 +255,28 @@ def sync(target='unit', source='any'):
 async = sync('port')
 
 
+class Parts:
+    def __init__(self, *args, **kws):
+        super().__init__(*args, **kws)
+        process, out = self.__flow__()
+        if process:
+            self.process = process
+        if out:
+            self.out = out
+
+    def __rshift__(self, other):
+        self.out >> other
+        return other
+
+    def __rrshift__(self, other):
+        other >> self.process
+        return self
+
+
+class part(cached):
+    pass
+
+
 class CallHelper(Unit):
     @outport
     def out(): pass
@@ -262,6 +284,7 @@ class CallHelper(Unit):
     @inport
     def process(self, load, tag):
         yield from load >> tag >> self.out
+
 
 @log(short='yld', sign='>|')
 class YieldHelper(Unit):
