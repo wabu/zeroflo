@@ -11,7 +11,7 @@ class match(Unit):
     def __init__(self, **matches):
         super().__init__()
         self.matches = {k: v if isinstance(v, set) else {v} 
-                        for k,v in matches.items()}
+                        for k,v in matches.items() if v is not None}
 
     @outport
     def out(): pass
@@ -92,22 +92,22 @@ class Collect(Paramed, Unit):
             return warmup
 
     @param
-    def number(self, number=64):
+    def number(self, number=4):
         """ collect at least this number of packets """
         return number
 
     @param
-    def length(self, length='64k'):
+    def length(self, length='4k'):
         """ collect until we have at least this length """
         return param.sizeof(length)
 
     @param
-    def timeout(self, timeout=1.0):
+    def timeout(self, timeout=.1):
         """ wait at most this time before putting out """
         return timeout
 
     @param
-    def max_queued(self, max_queued=8):
+    def max_queued(self, max_queued=4):
         """ maximum number of queued packets """
         return max_queued
 

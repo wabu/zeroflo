@@ -132,8 +132,8 @@ class ZmqChan(Chan):
         self.__log.info('setting up %s::%s', addr, how)
 
         stream = yield from create_zmq_stream(self.__stream_type__, limit=64*1024*1024)
-        stream.setsockopt(zmq.SNDHWM, 16)
-        stream.setsockopt(zmq.RCVHWM, 16)
+        stream.setsockopt(zmq.SNDHWM, 4)
+        stream.setsockopt(zmq.RCVHWM, 4)
         stream.set_write_buffer_limits(64*1024*1024)
         yield from getattr(stream, how)(addr)
         self.stream = stream
