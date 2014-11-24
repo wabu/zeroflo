@@ -227,33 +227,26 @@ class Gunzip(Unit):
     @coroutine
     def __setup__(self):
         self.decomp = None
-        self.rest = None
 
     @outport
     def out(): pass
 
     @outport
-    def chunk(): pass
+    def tails(): pass
 
     @coroutine
     def flush(self, tag):
         if self.decomp:
-            self.__log.debug('flushing because of offset==0')
+            self.__log.debug('flushing gunzip')
             tail = self.decomp.flush()
             if tail:
                 self.__log.warning('uncrompressed raw data: %s', repr(tail))
-            yield from tail >> tag.add(flush=True) >> self.chunk
+                yield from tail >> tag.add(flush=True) >> self.tails
             self.decomp = None
-
-        if self.rest:
-            rest = self.rest
-            self.__log.debug('putting out rest of files (%d)', len(rest))
-            yield from (rest >> tag.add(offset=self.offset, size=len(rest), flush=True)
-                             >> self.out)
 
     @inport
     def process(self, raw, tag):
-        if tag.offset == 0:
+        if tag.offset == 0 and self.decomp:
             yield from self.flush(tag)
 
         if not self.decomp:
@@ -263,20 +256,7 @@ class Gunzip(Unit):
             decomp = self.decomp
 
         data = decomp.decompress(raw)
-        rest = self.rest
-        if rest:
-            data = rest + data
-            rest = None
 
-        if not tag.flush:
-            data,*rest = data.rsplit(b'\n', 1)
-            if rest:
-                rest, = rest
-            else:
-                rest = data
-                data = b''
-
-        self.rest = rest
         size = len(data)
         self.offset += size
 

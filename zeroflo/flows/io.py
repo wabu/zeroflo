@@ -57,16 +57,14 @@ class Reader(Paramed, Unit):
         skip = tag.skip
         limit = tag.limit
 
+        size = 0
         offset = self.offset
-        rest = b''
-
         chunksize = self.chunksize
 
         with (yield from self.open(filename)) as file:
             eof = False
             while not eof:
-                size = len(rest)
-                chunks = [rest]
+                chunks = []
                 while True:
                     chunk = (yield from file.read(chunksize))
                     size += len(chunk)
@@ -78,17 +76,7 @@ class Reader(Paramed, Unit):
                 if eof:
                     tag = tag.add(eof=True, flush=True)
 
-                if not eof:
-                    last,*rest = chunk.rsplit(b'\n', 1)
-                    if rest:
-                        rest, = rest
-                    else:
-                        rest = last
-                        last = b''
-                else:
-                    last = chunk
-
-                chunks.append(last)
+                chunks.append(chunk)
                 data = b''.join(chunks)
                 size = len(data)
 

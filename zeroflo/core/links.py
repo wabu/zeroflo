@@ -215,7 +215,6 @@ class ZmqLoadBalance(Chan):
         logging.basicConfig(format='[%(process)d] %(name)s::%(levelname)5s %(message)s')
         self.__log.setLevel('DEBUG')
 
-        self.__log.info("running balancer %s", self)
         try:
             context = zmq.Context()
             incomming = context.socket(zmq.DEALER)
@@ -228,6 +227,7 @@ class ZmqLoadBalance(Chan):
             self.__log.info("failed to start %s", self, exc_info=True)
             return
 
+        self.__log.info("running balancer %s", self)
         while True:
             #self.__log.debug('%s recving packet', self)
             #fpid = incomming.recv(copy=False)

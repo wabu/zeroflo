@@ -34,6 +34,28 @@ class ToSeries(Unit):
         yield from data >> tag >> self.out
 
 
+class ToFrame(Paramed, Unit):
+    @param
+    def columns(self, val=None):
+        return val
+
+    @coroutine
+    def __setup__(self):
+        self.offset = 0
+
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        df = pd.DataFrame(data, columns=self.columns)
+        df.index += self.offset
+
+        yield from df.applymap(lambda x: x or np.nan) >> tag.add(offset=self.offset, size=len(df)) >> self.out
+
+        self.offset += len(df)
+
+
 class ToTable(Unit):
     """ converts raw data (bytes) with read_table """
     def __init__(self, **opts):

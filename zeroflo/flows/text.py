@@ -19,6 +19,38 @@ class RemoveNullBytes(Unit):
     def process(self, data, tag):
         yield from data.replace(self.null, self.replace) >> tag >> self.out
 
+class Chunker(Unit):
+    @param
+    def seperator(self, val=b'\n'):
+        return val
+
+    @coroutine
+    def __setup__(self):
+        self.nil = self.rest = self.seperator[:0]
+
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        data = self.rest + data
+
+        if not tag.flush:
+            data,*rest = data.rsplit(self.seperator, 1)
+            if rest:
+                rest, = rest
+            else:
+                rest = data
+                data = self.nil
+        else:
+            rest = self.nil
+
+        self.rest = rest
+
+        if data or tag.flush:
+            yield from data >> tag >> self.out
+
+
 class Decode(Unit):
     @outport
     def out(): pass
@@ -43,16 +75,22 @@ class Lines(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        #rest = self.rest
-
-        #*lines,rest = (rest+data).split(self.seperator)
-        #if tag.flush:
-        #    if rest.strip():
-        #        lines.append(rest)
-        #    rest=self.empty
         lines = data.split(self.seperator)
         yield from lines >> tag >> self.out
-        #self.rest = rest
+
+
+class Fields(Paramed, Unit):
+    @param
+    def seperator(self, val='\t'):
+        return val
+
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        sep = self.seperator
+        yield from [l.split(sep) for l in data] >> tag >> self.out
 
 
 @log
@@ -81,7 +119,6 @@ class Sort(Unit):
         yield from sorted(lines) >> tag >> self.out
 
 
-
 class Filter(Paramed, Unit):
     @param
     def pattern(self, value=None):
@@ -95,6 +132,7 @@ class Filter(Paramed, Unit):
     @inport
     def process(self, lines, tag):
         yield from list(filter(self.pattern.search, lines)) >> tag >> self.out
+
 
 class Join(Paramed, Unit):
     @param
