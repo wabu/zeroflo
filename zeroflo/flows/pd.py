@@ -48,10 +48,11 @@ class ToFrame(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        df = pd.DataFrame(data, columns=self.columns)
+        df = pd.DataFrame(data or None, columns=self.columns)
         df.index += self.offset
+        df[df == ''] = np.nan
 
-        yield from df.applymap(lambda x: x or np.nan) >> tag.add(offset=self.offset, size=len(df)) >> self.out
+        yield from df >> tag.add(offset=self.offset, size=len(df)) >> self.out
 
         self.offset += len(df)
 
