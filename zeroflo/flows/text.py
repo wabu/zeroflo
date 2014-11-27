@@ -3,7 +3,7 @@ from pyadds.logging import *
 
 import re
 
-class RemoveNullBytes(Unit):
+class RemoveNullBytes(Paramed, Unit):
     @param
     def null(self, val=b'\x00'):
         return val
@@ -19,7 +19,7 @@ class RemoveNullBytes(Unit):
     def process(self, data, tag):
         yield from data.replace(self.null, self.replace) >> tag >> self.out
 
-class Chunker(Unit):
+class Chunker(Paramed, Unit):
     @param
     def seperator(self, val=b'\n'):
         return val
