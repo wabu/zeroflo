@@ -47,6 +47,10 @@ class InChan(Chan):
     def fetch(self):
         raise NotImplementedError
 
+    @coroutine
+    def done(self):
+        pass
+
 class OutChan(Chan):
     __show__ = '>>'
 
@@ -69,8 +73,7 @@ class LocalLinker(Linker):
         try:
             return self.queues[key]
         except KeyError:
-            self.queues[key] = q = asyncio.Queue(4)
-            return q
+            return self.queues.setdefault(key, asyncio.JoinableQueue(1))
 
     @coroutine
     def mk_in(self, endpoint):
@@ -94,14 +97,24 @@ class LocalChan(Chan):
 
 
 class LocalIn(InChan, LocalChan):
-    @cached
+    def __init__(self, *args, **kws):
+        super().__init__(*args, **kws)
+        self._needed = False
+
+    @coroutine
     def fetch(self):
-        return self.queue.get
+        load = yield from self.queue.get()
+        return load
+
+    @coroutine
+    def done(self):
+        self.queue.task_done()
 
 class LocalOut(OutChan, LocalChan):
-    @cached
-    def deliver(self):
-        return self.queue.put
+    @coroutine
+    def deliver(self, load):
+        yield from self.queue.put(load)
+        yield from self.queue.join()
 
 
 @linker(kind='par')
@@ -131,10 +144,10 @@ class ZmqChan(Chan):
 
         self.__log.info('setting up %s::%s', addr, how)
 
-        stream = yield from create_zmq_stream(self.__stream_type__, limit=64*1024*1024)
-        stream.setsockopt(zmq.SNDHWM, 4)
-        stream.setsockopt(zmq.RCVHWM, 4)
-        stream.set_write_buffer_limits(64*1024*1024)
+        stream = yield from create_zmq_stream(self.__stream_type__, limit=64*1024)
+        stream.setsockopt(zmq.SNDHWM, 1)
+        stream.setsockopt(zmq.RCVHWM, 1)
+        stream.set_write_buffer_limits(64*1024)
         yield from getattr(stream, how)(addr)
         self.stream = stream
         return self
@@ -218,10 +231,10 @@ class ZmqLoadBalance(Chan):
         try:
             context = zmq.Context()
             incomming = context.socket(zmq.DEALER)
-            incomming.setsockopt(zmq.RCVHWM, 32)
+            incomming.setsockopt(zmq.RCVHWM, 1)
             incomming.bind('ipc://{}/chan-in'.format(self.endpoint.namespace()))
             outgoing = context.socket(zmq.REP)
-            outgoing.setsockopt(zmq.SNDHWM, 128)
+            outgoing.setsockopt(zmq.SNDHWM, 4)
             outgoing.bind('ipc://{}/chan-out'.format(self.endpoint.namespace()))
         except zmq.ZMQError as e:
             self.__log.info("failed to start %s", self, exc_info=True)

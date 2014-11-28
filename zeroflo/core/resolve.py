@@ -1,4 +1,5 @@
 from collections import defaultdict
+from contextlib import contextmanager
 
 import asyncio
 from asyncio import coroutine
@@ -7,6 +8,7 @@ from .links import linkers
 
 from pyadds.logging import log
 from pyadds.forkbug import maybug
+from pyadds.annotate import delayed
 
 
 class Defaults(dict):
@@ -81,7 +83,7 @@ class Receiver(Resolver):
     def __init__(self, endpoint, tracker):
         super().__init__(endpoint, tracker)
 
-        self.queue = asyncio.Queue(8)
+        self.queue = asyncio.JoinableQueue(1)
         self.portmap = {}
         self.loops = {}
         self.main = None
@@ -117,23 +119,32 @@ class Receiver(Resolver):
     def loop(self, chan):
         self.__log.info('looping %s: %s', self.endpoint, chan)
         fetch = chan.fetch
+        done = chan.done
+        join = self.queue.join
         put = self.queue.put
         while True:
             packet = yield from fetch()
             yield from put(packet)
+            yield from join()
+            yield from done()
 
     @coroutine
     def run(self):
         self.__log.info('running %s', self.endpoint)
         get = self.queue.get
+        done = self.queue.task_done
         prts = self.portmap
+        
         aquire = self.tracker.aquire
         release = self.tracker.release
+
         while True:
             tgt, packet = yield from get()
             with maybug(namespace=self.endpoint):
                 yield from prts[tgt](*packet)
             yield from release(tgt)
+
+            done()
 
 
 class Deliver(Resolver):
