@@ -7,6 +7,68 @@ import time
 from collections import defaultdict
 from pyadds.logging import log
 
+class Timing:
+    def __init__(self):
+        self.time = self.start = time.time()
+
+    def set(self, now=None):
+        if now is None:
+            now = time.time()
+        self.time = now - self.start
+
+    @property
+    def mins(self):
+        return int(self.time // 60)
+
+    @property
+    def hours(self):
+        return int(self.time // 3600)
+
+    @property
+    def secs(self):
+        return self.time % 60
+
+    def __getitem__(self, name):
+        if isinstance(name, str):
+            return {'time': self.time, 'mins': self.mins, 'hours': self.hours, 'secs': self.secs}[name]
+        elif isinstance(name, int):
+            return {-1: self.time, 0: self.secs, 1: self.mins, 2: self.hours}
+        elif isinstance(name, tuple):
+            return tuple(self[n] for n in name)
+        raise KeyError('Timing has no item %s' % name)
+
+    def __iter__(self):
+        return iter((self.hours, self.mins, self.secs))
+
+    def __float__(self):
+        return self.time
+
+    def __str__(self):
+        if self.hours:
+            return '{}:{:02d}:{:02.0f}'.format(*self)
+        else:
+            return '{}:{:04.1f}'.format(*self['mins','secs'])
+
+
+class Status(Paramed, Unit):
+    @param
+    def format(self, val='{__tag__!r}'):
+        return val
+
+    @param
+    def end(self, val='\n'):
+        return val
+
+    @coroutine
+    def __setup__(self):
+        self.timing = Timing()
+
+    @inport
+    def process(self, data, tag):
+        self.timing.set()
+        print(self.format.format(__data__=data, __tag__=tag, __time__=self.timing, **tag), end=self.end, flush=True)
+        yield from []
+
 class match(Unit):
     def __init__(self, **matches):
         super().__init__()

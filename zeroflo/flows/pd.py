@@ -52,7 +52,7 @@ class ToFrame(Paramed, Unit):
         df.index += self.offset
         df[df == ''] = np.nan
 
-        yield from df >> tag.add(offset=self.offset, size=len(df)) >> self.out
+        yield from df >> tag.add(size=len(df)) >> self.out
 
         self.offset += len(df)
 
@@ -161,32 +161,35 @@ class Unstack(Unit):
         yield from data.unstack() >> tag >> self.out
 
 
-class Drop(Unit):
-    def __init__(self, drop, *args, **kws):
-        super().__init__(*args, **kws)
-        self.drop = drop
-
-    @outport
-    def out(): pass
-
-    @inport
-    def process(self, data: pd.DataFrame, tag):
-        data = data[data.columns.difference(self.drop)]
-        yield from data >> tag >> self.out
-
-
-class Select(Unit):
+class Columns(Paramed, Unit):
     def __init__(self, select, *args, **kws):
         super().__init__(*args, **kws)
         self.select = select
 
+    @param
+    def drop(self, val=None):
+        if val is not None:
+            val = pd.Index(val)
+        return val
+
+    @param
+    def select(self, val=None):
+        if val is not None:
+            val = pd.Index(val)
+        return val
+
     @outport
     def out(): pass
 
     @inport
     def process(self, data: pd.DataFrame, tag):
-        data = data[data.columns & self.select]
-        yield from data >> tag >> self.out
+        cols = data.columns
+        if self.drop is not None:
+            cols = cols.difference(self.drop)
+        if self.select is not None:
+            cols = cols.intersection(self.select)
+
+        yield from data[cols] >> tag >> self.out
 
 
 fill_dtypes = {

@@ -49,6 +49,13 @@ class Reader(Paramed, Unit):
         return param.sizeof(chunksize)
 
     @param
+    def warmup(self, val=None):
+        if val is None:
+            return self.chunksize
+        else:
+            return val
+
+    @param
     def offset(self, offset=0):
         return offset
 
@@ -59,26 +66,31 @@ class Reader(Paramed, Unit):
 
         size = 0
         offset = self.offset
+        warmup = self.warmup
         chunksize = self.chunksize
 
         with (yield from self.open(filename)) as file:
             eof = False
             while not eof:
+                size = 0
                 chunks = []
                 while True:
                     chunk = (yield from file.read(chunksize))
                     size += len(chunk)
-                    if eof or size > chunksize:
-                        break
                     chunks.append(chunk)
                     eof = file.at_eof()
+                    if eof or warmup or size > chunksize:
+                        break
+                
+                if warmup:
+                    warmup -= size
+                    if warmup < 0:
+                        warmup = 0
 
                 if eof:
                     tag = tag.add(eof=True, flush=True)
 
-                chunks.append(chunk)
                 data = b''.join(chunks)
-                size = len(data)
 
                 tag = tag.add(filename=filename, offset=offset, size=size)
                 offset += size
@@ -110,7 +122,7 @@ class PBzReader(Reader):
     @coroutine
     def open(self, filename):
         pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
-                stdout=asyncio.subprocess.PIPE, limit=self.chunksize*2)
+                stdout=asyncio.subprocess.PIPE, limit=int(self.chunksize*2.2))
         if not pbzip2.stdout._transport:
             logging.getLogger('asyncio').warning(
                     "pipe has not transport, so we're fixing this manually")
@@ -130,10 +142,15 @@ class PBzReader(Reader):
                 raise
         return closing()
 
+
 @log
 class Writer(Paramed, Unit):
     @param
     def filename(self, val):
+        return val
+
+    @param
+    def seperator(self, val=b'\n'):
         return val
 
     @coroutine
@@ -147,7 +164,7 @@ class Writer(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        self.f.write(data+b'\n')
+        self.f.write(data+self.seperator)
         yield from self.f.drain()
 
 
