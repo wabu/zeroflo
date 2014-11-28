@@ -117,7 +117,7 @@ class Receiver(Resolver):
         
     @coroutine
     def loop(self, chan):
-        self.__log.info('looping %s: %s', self.endpoint, chan)
+        self.__log.debug('looping %s: %s', self.endpoint, chan)
         fetch = chan.fetch
         done = chan.done
         join = self.queue.join
@@ -130,7 +130,7 @@ class Receiver(Resolver):
 
     @coroutine
     def run(self):
-        self.__log.info('running %s', self.endpoint)
+        self.__log.debug('running %s', self.endpoint)
         get = self.queue.get
         done = self.queue.task_done
         prts = self.portmap

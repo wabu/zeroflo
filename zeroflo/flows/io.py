@@ -4,9 +4,12 @@ from ..ext import param, Paramed
 from pathlib import Path
 
 import itertools as it
+import re
+
 from contextlib import contextmanager
 
 from pyadds.logging import log, logging
+from pyadds.annotate import delayed
 
 @log
 class ListFiles(Paramed, Unit):
@@ -92,7 +95,7 @@ class Reader(Paramed, Unit):
 
                 data = b''.join(chunks)
 
-                tag = tag.add(filename=filename, offset=offset, size=size)
+                tag = tag.add(filename=filename, completed=self.status, offset=offset, size=size)
                 offset += size
 
                 if skip:
@@ -119,15 +122,40 @@ class Reader(Paramed, Unit):
 
 
 class PBzReader(Reader):
+    @delayed
+    def extract_status(self):
+        return re.compile(rb'Completed:\s*(\d*)%')
+
+    @coroutine
+    def read_status(self, status):
+        self.status = 0
+
+        text = b''
+        while not status.at_eof():
+            ins = yield from status.read(1024)
+            text += ins
+            *lines,text = text.split(b'\r')
+            for l in lines:
+                m = self.extract_status.search(l)
+                if m:
+                    self.status = int(m.groups()[0])
+
+
     @coroutine
     def open(self, filename):
-        pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-cd', filename,
-                stdout=asyncio.subprocess.PIPE, limit=int(self.chunksize*2.2))
+        pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-vcd', filename,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=int(self.chunksize*2.2))
         if not pbzip2.stdout._transport:
             logging.getLogger('asyncio').warning(
                     "pipe has not transport, so we're fixing this manually")
             tr = pbzip2._transport.get_pipe_transport(1)
             pbzip2.stdout.set_transport(tr)
+
+        if not pbzip2.stderr._transport:
+            tr = pbzip2._transport.get_pipe_transport(2)
+            pbzip2.stderr.set_transport(tr)
+
+        status = asyncio.async(self.read_status(pbzip2.stderr))
 
         @contextmanager
         def closing():
@@ -140,6 +168,10 @@ class PBzReader(Reader):
                     pass
                 asyncio.async(pbzip2.wait())
                 raise
+            finally:
+                status.cancel()
+                yield from status
+
         return closing()
 
 
