@@ -78,6 +78,27 @@ class Unit:
         other >> self.process
         return self
 
+    def __sub__(self, other):
+        return self.out -- other
+
+    def __rsub__(self, other):
+        return other -- self.process
+
+    def __pos__(self):
+        return self
+
+    def __neg__(self):
+        return self
+
+    def __add__(self, insert):
+        class Insert:
+            def __rshift__(_, other):
+                ( self -- other )
+                print('adding {} >> {} >> {}'.format(self, insert, other))
+                ( self >> insert >> other )
+                return other
+        return Insert()
+
     @withctrl
     def join(self, ctrl):
         asyncio.get_event_loop().run_until_complete(
@@ -190,6 +211,19 @@ class Port:
             return NotImplemented
         tp.add_link(self, other)
         return other
+
+    @withtp
+    def __sub__(self, other, tp):
+        if not isinstance(other, Port):
+            return NotImplemented
+        print('removing {} >> {}'.format(self, other))
+        return tp.remove_links(self, other)
+
+    def __pos__(self):
+        return self
+
+    def __neg__(self):
+        return self
 
 
 @log(short='ins', sign='<<')
