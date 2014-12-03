@@ -91,11 +91,17 @@ class DumpTable(Unit):
     def out():
         """ port for framed data """
 
+    @coroutine
+    def __setup__(self):
+        self.header = self.opts.pop('header', False)
+
     @inport
     def process(self, data, tag):
         """ port getting bytes data """
         out = io.StringIO()
-        data.to_csv(out, **self.opts)
+        data.to_csv(out, header=self.header, **self.opts)
+        if self.header:
+            self.header=False
 
         yield from out.getvalue().encode() >> tag >> self.out
 
