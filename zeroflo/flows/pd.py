@@ -39,6 +39,10 @@ class ToFrame(Paramed, Unit):
     def columns(self, val=None):
         return val
 
+    @param
+    def na_values(self, val=''):
+        return val
+
     @coroutine
     def __setup__(self):
         self.offset = 0
@@ -50,7 +54,7 @@ class ToFrame(Paramed, Unit):
     def process(self, data, tag):
         df = pd.DataFrame(data or None, columns=self.columns)
         df.index += self.offset
-        df[df == ''] = np.nan
+        df[df == self.na_values] = np.nan
 
         yield from df >> tag.add(size=len(df)) >> self.out
 
@@ -287,3 +291,19 @@ class Query(Paramed, Unit):
     def process(self, data : pd.DataFrame, tag):
         yield from data.query(self.query) >> tag >> self.out
 
+
+class Filter(Unit):
+    def __init__(self, **filters):
+        super().__init__()
+        self.filters = filters
+
+    @outport
+    def out(self, data : pd.DataFrame, tag):
+        pass
+
+    @inport
+    def process(self, data : pd.DataFrame, tag):
+        for key,filt in self.filters.items():
+            data = data[data[key].str.contains(filt)]
+            
+        yield from data >> tag >> self.out

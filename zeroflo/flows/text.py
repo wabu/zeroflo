@@ -105,18 +105,15 @@ class Sort(Unit):
     @inport
     def process(self, lines, tag):
         new = len(lines)
+        self.buf.extend(lines)
+        tot = len(self.buf)
+
         if not tag.flush:
-            self.buf.extend(lines)
-            tot = len(self.buf)
-            self.__log.info('adding %d lines -> %d', new, tot)
-            return
-
-        if self.buf:
-            self.__log.info('flushing out %d+%d lines', new, len(self.buf))
-            self.buf.extend(lines)
+            self.__log.debug('adding %d lines -> %d', new, tot)
+        else:
+            self.__log.debug('flushing out %d+%d lines', new, len(self.buf))
             lines,self.buf = self.buf, []
-
-        yield from sorted(lines) >> tag >> self.out
+            yield from sorted(lines) >> tag >> self.out
 
 
 class Filter(Paramed, Unit):

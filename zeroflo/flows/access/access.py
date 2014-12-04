@@ -201,8 +201,8 @@ class Fetch(Paramed, Unit):
         end = time.time()
 
         size = yield from resource.size
-        self.__log.info('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin, 
-                        first-start, end-start, chunks, waits, conts, times, offset, size)
+        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin, 
+                         first-start, end-start, chunks, waits, conts, times, offset, size)
         assert size == offset, 'fetched data size different from size info'
 
 
