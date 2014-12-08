@@ -63,7 +63,7 @@ class Reader(Paramed, Unit):
         return offset
 
     @inport
-    def process(self, filename, tag):
+    def process(self, path, tag):
         skip = tag.skip
         limit = tag.limit
 
@@ -72,7 +72,7 @@ class Reader(Paramed, Unit):
         warmup = self.warmup
         chunksize = self.chunksize
 
-        with (yield from self.open(filename)) as file:
+        with (yield from self.open(path)) as file:
             eof = False
             while not eof:
                 size = 0
@@ -95,7 +95,7 @@ class Reader(Paramed, Unit):
 
                 data = b''.join(chunks)
 
-                tag = tag.add(filename=filename, completed=self.status, offset=offset, size=size)
+                tag = tag.add(path=path, completed=self.status, offset=offset, size=size)
                 offset += size
 
                 if skip:
@@ -142,8 +142,8 @@ class PBzReader(Reader):
 
 
     @coroutine
-    def open(self, filename):
-        pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-vcd', filename,
+    def open(self, path):
+        pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-vcd', path,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=int(self.chunksize*2.2))
         if not pbzip2.stdout._transport:
             logging.getLogger('asyncio').warning(

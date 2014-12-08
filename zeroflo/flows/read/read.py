@@ -11,10 +11,9 @@ import time
 @log
 class Watch(Paramed, Unit):
     """ watch a ressource directory for located resources becomming available """
-    def __init__(self, root, locate, **kws):
+    def __init__(self, accesses, **kws):
         super().__init__(**kws)
-        self.root = root
-        self.locate = locate
+        self.accesses = accesses
 
     @outport
     def out(): pass
@@ -37,73 +36,76 @@ class Watch(Paramed, Unit):
         try:
             start = pd.Timestamp('now', tz=tag.tz) - pd.datetools.to_offset(start)
         except ValueError:
-            start = pd.Timestamp(start or tag.start, tz=tag.tz)
+            start = pd.Timestamp(start, tz=tag.tz)
 
         tz = start.tz
+        time = pd.Timestamp(start, tz=tz)
 
         try:
             end = start + pd.datetools.to_offset(tag.end)
         except (TypeError, ValueError):
             end = pd.Timestamp(tag.end, tz=tz)
 
-        self.__log.info('fetching from {start} to {end}'.format(
-                    start=start, end=end or '...'))
+        self.__log.info('fetching from %s to %s', start, '...' if pd.isnull(end) else end)
 
-        time = pd.Timestamp(start, tz=tz)
-        locate = self.locate
-        root = self.root
-
+        last = None
+        accesses = self.accesses
         while not time >= end:
-            # wait until file may become available
-            loc = locate.location(time)
-            while True:
-                wait = (loc.available - pd.Timestamp('now', tz=tz)).total_seconds()
-                if wait <= 0:
-                    break
-                print('waiting %ds for %s' % (wait, loc.path), end='\033[J\r')
-                yield from asyncio.sleep(1)
+            avails = [a.available(time) for a in accesses]
+            avail = min(avails)
 
-            # wait for file
-            res = root.open(loc.path)
-            while True:
-                stat = yield from res.stat
-                if stat:
-                    break
+            now = pd.Timestamp('now', tz=avail.tz)
+            wait = (avail-now).total_seconds()
+            if wait > 0:
+                self.__log.debug('wating %ds for first access [%s]', wait, time)
+                yield from asyncio.sleep(wait)
+                now = pd.Timestamp('now', tz=avail.tz)
 
-                wait = (pd.Timestamp('now', tz=tz)-loc.available).total_seconds()
-                if pd.Timestamp('now', tz=tz) > loc.available + self.skip_after:
-                    skip_loc = loc
-                    for k in range(1, self.skip_num+1):
-                        skip_loc = locate.location(skip_loc.end)
-                        skip_res = root.open(skip_loc.path)
-                        stat = yield from skip_res.stat
-                        if stat:
-                            self.__log.warning('skipped %d to %s (%s)', 
-                                    k, skip_loc.path, skip_loc.available)
-                            res = skip_res
-                            loc = skip_loc
+            for avail,access in zip(avails, accesses):
+                if avail <= now:
+                    s = (yield from access.stat(time))
+                    if s:
+                        stat = s
+                        if stat[1].begin == time:
                             break
-                        if skip_loc.available > pd.Timestamp('now', tz=tz):
-                            break
-                if stat:
-                    break
 
-                print('awating %s for %ds' % (loc.path, wait), end='\033[J\r')
-                yield from asyncio.sleep(min(max(.2, wait/20), 2))
+            if stat:
+                access, loc, res = stat
+                self.__log.debug('%s-access is available [%s]', access.name, time)
+            else:
+                self.__log.debug('waiting for all %d accesses [%s]', len(accesses), time)
+                done,pending = yield from asyncio.wait([a.get(time) for a in accesses], 
+                                                       return_when=asyncio.FIRST_COMPLETED)
+                for p in pending:
+                    p.cancel()
+                
+                done = {access: (loc, res) for access, loc, res in [r.result() for r in done]}
+                for a in accesses:
+                    if a in done:
+                        access, loc, res = d.result()
+                        break
+                self.__log.debug('finished with %s-access (%d)', access.name, len(done))
+                
+            stable = access.isstable(time)
 
+            t = tag.add(access=access.name,
+                        stable=stable, **loc._asdict())
+            if start and loc.begin != start:
+                t['skip_to_time'] = start
 
-            stable = (pd.Timestamp('now', tz=tz) - loc.available) > self.stable.delta
-
-            yield from loc.path >> tag.add(stable=stable, **loc._asdict()) >> self.out
+            if last != access.name:
+                last = access.name
+                self.__log.info('using %s-access for %s ...', access.name, time)
+            yield from loc.path >> t >> self.out
             time = loc.end
 
 
 @log
-class Fetch(Paramed, Unit):
+class Reader(Paramed, Unit):
     """ fetch resources in chunks """
-    def __init__(self, root, **kws):
+    def __init__(self, accesses, **kws):
         super().__init__(**kws)
-        self.root = root
+        self.accesses = {a.name: a for a in accesses}
 
     @param
     def chunksize(self, chunksize='15m'):
@@ -112,12 +114,23 @@ class Fetch(Paramed, Unit):
     @outport
     def out(): pass
 
+    @coroutine
+    def __setup__(self):
+        self.last = None
+
     @inport
     def process(self, path, tag):
-        self.__log.debug('fetch file %s (%s)', path, tag.begin)
-        resource = self.root.open(path)
+        name = tag.access
+        if name != self.last:
+            self.last = name
+            self.__log.info('reading with %s-access (%s ...)', name, tag.path)
 
-        reader = yield from resource.reader()
+        self.__log.debug('fetch file %s (%s) with %s', path, tag.begin, name)
+
+        access = self.accesses[name]
+        resource = access.resource(path)
+        reader = (yield from resource.reader())
+        tag.update(access.tag)
 
         chunksize = self.chunksize
         offset = 0
@@ -203,7 +216,7 @@ class Fetch(Paramed, Unit):
         size = yield from resource.size
         self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin, 
                          first-start, end-start, chunks, waits, conts, times, offset, size)
-        assert size == offset, 'fetched data size different from size info'
+        #XXX not usable with decompression assert size == offset, 'fetched data size different from size info'
 
 
 class ListFiles(Paramed, Unit):

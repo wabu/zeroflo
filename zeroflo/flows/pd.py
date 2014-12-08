@@ -2,6 +2,8 @@ from ..core import Unit, outport, inport, coroutine
 from ..ext import param, Paramed
 from ..flows.tools import Collect
 
+from pyadds.logging import log
+
 import pandas as pd
 import numpy as np
 import re
@@ -31,6 +33,7 @@ class ToSeries(Unit):
             yield from pd.Series() >> tag >> self.out
             return
         data = pd.Series(data)
+        df.index += tag.offset or 0
         yield from data >> tag >> self.out
 
 
@@ -40,12 +43,14 @@ class ToFrame(Paramed, Unit):
         return val
 
     @param
-    def na_values(self, val=''):
+    def dtypes(self, val={}):
         return val
 
-    @coroutine
-    def __setup__(self):
-        self.offset = 0
+    @param
+    def na_values(self, val=''):
+        if not isinstance(val, list):
+            val = [val]
+        return val
 
     @outport
     def out(): pass
@@ -53,12 +58,13 @@ class ToFrame(Paramed, Unit):
     @inport
     def process(self, data, tag):
         df = pd.DataFrame(data or None, columns=self.columns)
-        df.index += self.offset
-        df[df == self.na_values] = np.nan
+        if not df.empty:
+            df.index += tag.offset or 0
+            df[df.applymap(self.na_values.__contains__)] = np.nan
+            for col,dtype in self.dtypes.items():
+                df[col] = df[col].astype(dtype)
 
         yield from df >> tag.add(size=len(df)) >> self.out
-
-        self.offset += len(df)
 
 
 class ToTable(Unit):
@@ -143,6 +149,43 @@ class Convert(Paramed, Unit):
                 sel = sel.astype(conv)
             data[col] = sel
         yield from data >> tag >> self.out
+
+
+@log
+class Sort(Paramed, Unit):
+    @param
+    def by(self, val=None):
+        return val
+
+    @outport
+    def out(): pass
+
+    @coroutine
+    def __setup__(self):
+        self.buf = []
+        self.tag = None
+
+    @coroutine
+    def flush(self):
+        new = pd.concat(self.buf)
+        self.__log.debug('flushing out %d lines', len(new))
+        yield from new >> self.tag.add(sorted=True) >> self.out
+        self.buf = []
+
+    @inport
+    def process(self, data, tag):
+        if tag.sorted:
+            if self.buf:
+                yield from self.flush()
+            yield from data >> tag >> self.out
+            return
+
+        self.buf.append(data)
+        self.tag = tag
+        self.__log.debug('adding %d lines -> %d', len(data), len(self.buf))
+
+        if tag.flush:
+            yield from self.flush()
 
 
 class IndexContinued(Unit):

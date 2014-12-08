@@ -1,29 +1,15 @@
 from pyadds.annotate import cached
+from ...ext.params import param, Paramed
 
 import pandas as pd
 
 import asyncio
 coroutine = asyncio.coroutine
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from pathlib import Path
-import logging
 
-size_suffixes = ['k', 'm', 'g', 't', 'p']
-def strtosize(s):
-    try:
-        if s[-1].isalpha():
-            num = size_suffixes.index(s[-1].lower())+1
-            s = s[:-1]
-        else:
-            num = 0
-
-        s = float(s)
-        s = int(s * 1024**num)
-        return s
-    except ValueError as e:
-        print(e)
-        return -1
+from pyadds.logging import log, logging
 
 
 class Stats(namedtuple('Stats', 'name, dir, modified, size')):
@@ -130,18 +116,18 @@ class Directory(Ressource):
         return (yield from glob(self))
 
     @coroutine
-    def await(self, name: str, poll=1.0):
+    def await(self, name, poll=1.0):
         """ wait until the give ressource is created in this directory """
         ressource = self.open(name)
         while not (yield from ressource.exists):
             yield from asyncio.sleep(poll)
         return ressource
 
-    def open(self, name: str):
+    def open(self, name):
         """ return Ressource object for ressource in this directory """
         raise NotImplementedError
 
-    def go(self, name: str):
+    def go(self, name):
         """ get a subdirectory """
         raise NotImplementedError
 
@@ -157,13 +143,14 @@ class Directory(Ressource):
 Location = namedtuple('Location', 'path, begin, end, available')
 
 class LocateByTime():
-    def __init__(self, format, *, width, delay='0s', **kws):
+    def __init__(self, format, *, width, delay='0s', tz=None, **kws):
         self.width = width = pd.datetools.to_offset(width)
         self.delay = pd.datetools.to_offset(delay)
         self.format = format
         kws['width'] = width
         kws['delay'] = delay
         self.kws = kws
+        self.tz = tz
 
     @cached
     def convert(self):
@@ -193,14 +180,108 @@ class LocateByTime():
         return convert
 
     def location(self, time='now'):
-        time = pd.Timestamp(time)
+        time = pd.Timestamp(time, tz=self.tz)
         start = pd.Timestamp(time.value // self.width.nanos * self.width.nanos, tz=time.tz)
         return Location(self.convert(start), start, start+self.width, start+self.width+self.delay)
+
+@log
+class Access(Paramed):
+    def __init__(self, name, root, locate, **opts):
+        super().__init__(**opts)
+        self.name = name
+        self.root = root
+        self.locate = locate
+
+    @param
+    def skip_after(self, value='5min'):
+        return pd.datetools.to_offset(value)
+
+    @param
+    def skip_num(self, value=240):
+        return value
+
+    @param
+    def stable(self, value='30s'):
+        return pd.datetools.to_offset(value)
+
+    @param
+    def tag(self, value={}):
+        return value
+
+    def available(self, time):
+        loc = self.locate.location(time)
+        return loc.available
+
+    @coroutine
+    def stat(self, time):
+        loc = self.locate.location(time)
+        res = self.root.open(loc.path)
+        if (yield from res.stat):
+            return self, loc, res
+
+    @coroutine
+    def wait(self, time):
+        loc = self.locate.location(time)
+        avail = loc.available
+
+        wait = (avail - pd.Timestamp('now', tz=avail.tz)).total_seconds()
+        if wait > 0:
+            yield from asyncio.sleep(wait)
+
+        return loc
+        
+    @coroutine
+    def get(self, time):
+        loc = (yield from self.wait(time))
+        avail = loc.available
+        res = self.root.open(loc.path)
+
+        self.__log.debug('start getting by %s', self.name)
+        while True:
+            stat = yield from res.stat
+            if stat:
+                break
+
+            now = pd.Timestamp('now', tz=avail.tz)
+            wait = (now - avail).total_seconds()
+
+            if now > avail + self.skip_after:
+                skip_loc = loc
+                for k in range(1, self.skip_num+1):
+                    skip_loc = self.locate.location(skip_loc.end)
+                    skip_res = self.root.open(skip_loc.path)
+                    skip_stat = yield from skip_res.stat
+                    if stat:
+                        self.__log.warning('skipped %d to %s (%s)', k, skip_loc.path, skip_loc.available)
+                        res = skip_res
+                        loc = skip_loc
+                        stat = skip_stat
+                        break
+                    if skip_loc.available > now:
+                        break
+
+                if stat:
+                    break
+            
+            sleep = min(max(.2, wait/10), 4)
+            self.__log.debug('sleeping %f by %s', sleep, self.name)
+            yield from asyncio.sleep(sleep)
+
+        self.__log.debug('done getting by %s', self.name)
+        return self, loc, res
+
+    def isstable(self, time):
+        loc = self.locate.location(time)
+        avail = loc.available
+        return avail + self.stable < pd.Timestamp('now', tz=avail.tz)
+
+    def resource(self, path):
+        return self.root.open(path)
 
 
 class UnionRessource(Ressource):
     """ unify multiple resources into single one """
-    def __init__(self, *items):
+    def __init__(self, items):
         self.items = items
 
     @coroutine
@@ -237,29 +318,31 @@ class UnionDirectory(Directory, UnionRessource):
     """ unify multiple directories into single one """
     @coroutine
     def listen(self):
-        lists = yield from asyncio.gather(*[item.listen() for item in self.items])
+        lists = yield from asyncio.gather([item.listen() for item in self.items])
         done = set()
         return [done.add(f) or f for ls in lists for f in ls if f not in done]
 
     @coroutine
     def glob(self, pattern, max_depth=0):
-        lists = yield from asyncio.gather(*[item.glob(pattern, max_depth) for item in self.items])
+        lists = yield from asyncio.gather([item.glob(pattern, max_depth) for item in self.items])
         done = set()
         return [done.add(f) or f for ls in lists for f in ls if f not in done]
 
-    def open(self, name: str):
-        return UnionRessource(*[item.open(name) for item in self.items])
+    def open(self, name):
+        return UnionRessource([item.open(name) for item in self.items])
 
-    def go(self, name: str):
-        return UnionDirectory(*[item.go(name) for item in self.items])
+    def go(self, name):
+        return UnionDirectory([item.go(name) for item in self.items])
 
 
 class LocalRessource(Ressource):
     """ resource accessing local files """
-    def __init__(self, path, read=['cat'], limit=64*1024*1024):
+    def __init__(self, path, read=['cat', ...], limit='64m'):
         self.path = Path(path)
+        if ... not in read:
+            read = read + [...]
         self.read = read
-        self.limit = limit
+        self.limit = param.sizeof(limit)
 
     @property
     @coroutine
@@ -272,10 +355,12 @@ class LocalRessource(Ressource):
                         tz=pd.datetools.dateutil.tz.tzlocal()), stat.st_size)
         except FileNotFoundError:
             return
+            
 
     @coroutine
     def reader(self, offset=None):
-        proc = (yield from asyncio.create_subprocess_exec(*(self.read + [str(self.path)]), 
+        cmd = [str(self.path) if arg==... else arg for arg in self.read]
+        proc = (yield from asyncio.create_subprocess_exec(*cmd, 
                     stdout=asyncio.subprocess.PIPE, limit=self.limit))
         if not proc.stdout._transport:
             tr = proc._transport.get_pipe_transport(1)
@@ -291,9 +376,10 @@ class LocalDirectory(LocalRessource, Directory):
     def listen(self):
         return [p.name for p in self.path.iterdir()]
 
-    def open(self, name: str):
+    def open(self, name):
         return LocalRessource(str(self.path / name), read=self.read)
 
-    def go(self, name: str):
+    def go(self, name):
         return LocalDirectory(str(self.path / name))
-
+            
+            

@@ -18,7 +18,7 @@ class Timing:
 
     @property
     def mins(self):
-        return int(self.time // 60)
+        return int(self.time // 60) % 60
 
     @property
     def hours(self):
@@ -73,7 +73,7 @@ class match(Unit):
     def __init__(self, **matches):
         super().__init__()
         self.matches = {k: v if isinstance(v, set) else {v} 
-                        for k,v in matches.items() if v is not None}
+                        for k,v in matches.items()}
 
     @outport
     def out(): pass
@@ -92,6 +92,19 @@ class forward(Unit):
         yield from data >> tag >> self.out
 
 
+class addtag(Unit):
+    def __init__(self, **tag):
+        super().__init__()
+        self.tag = tag
+
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        yield from data >> tag.add(**self.tag) >> self.out
+
+
 class tagonly(Unit):
     @outport
     def out(): pass
@@ -99,6 +112,19 @@ class tagonly(Unit):
     @inport
     def process(self, _, tag):
         yield from None >> tag >> self.out
+
+
+class Offset(Unit):
+    @outport
+    def out(): pass
+
+    def __setup__(self):
+        self.offset = 0
+
+    @inport
+    def process(self, data, tag):
+        yield from data >> tag.add(offset=offset) >> self.out
+        self.offset += len(data)
 
 
 class Reorder(Paramed, Unit):

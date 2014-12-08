@@ -1,4 +1,6 @@
-from .ressource import Ressource, Directory, Stats, strtosize
+from .ressource import Ressource, Directory, Stats
+from ...ext.params import param
+
 from pyadds.annotate import cached, delayed
 from pyadds.logging import log
 
@@ -150,7 +152,7 @@ class HTTPDirectory(HTTPRessource, Directory):
         if 'dir' not in tbl:
             tbl['dir'] = tbl['name'].str.endswith('/')
         if tbl['size'].dtype == object:
-            tbl['size'] = tbl['size'].apply(strtosize)
+            tbl['size'] = tbl['size'].apply(param.sizeof)
 
         return list(tbl.apply(self.extract_stat, axis=1).values)
 
