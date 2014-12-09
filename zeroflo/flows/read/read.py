@@ -32,11 +32,12 @@ class Watch(Paramed, Unit):
 
     @inport
     def process(self, start, tag):
+        tz = tag.tz
         start = start or tag.start or '1h'
         try:
-            start = pd.Timestamp('now', tz=tag.tz) - pd.datetools.to_offset(start)
+            start = pd.Timestamp('now', tz=tz) - pd.datetools.to_offset(start)
         except ValueError:
-            start = pd.Timestamp(start, tz=tag.tz)
+            start = pd.Timestamp(start, tz=tz)
 
         tz = start.tz
         time = pd.Timestamp(start, tz=tz)
@@ -50,7 +51,7 @@ class Watch(Paramed, Unit):
 
         last = None
         accesses = self.accesses
-        while not time >= end:
+        while not time >= pd.Timestamp(end, tz=time.tz):
             avails = [a.available(time) for a in accesses]
             avail = min(avails)
 
@@ -66,7 +67,7 @@ class Watch(Paramed, Unit):
                     s = (yield from access.stat(time))
                     if s:
                         stat = s
-                        if stat[1].begin == time:
+                        if stat[1].begin == pd.Timestamp(time, tz=avail.tz):
                             break
 
             if stat:
@@ -90,7 +91,7 @@ class Watch(Paramed, Unit):
 
             t = tag.add(access=access.name,
                         stable=stable, **loc._asdict())
-            if start and loc.begin != start:
+            if start and loc.begin != pd.Timestamp(start, tz=loc.begin.tz):
                 t['skip_to_time'] = start
 
             if last != access.name:
