@@ -2,6 +2,7 @@ from pyadds.annotate import cached
 from ...ext.params import param, Paramed
 
 import pandas as pd
+import os
 
 import asyncio
 coroutine = asyncio.coroutine
@@ -335,12 +336,35 @@ class UnionDirectory(Directory, UnionRessource):
         return UnionDirectory([item.go(name) for item in self.items])
 
 
+class LocalReader:
+    def __init__(self, path):
+        self.fd = path.open(mode='rb', buffering=0)
+        self.eof = False
+
+    @coroutine
+    def read_chunk(self, n=102400):
+        return self.fd.read(n)
+
+    def at_eof(self):
+        return self.eof
+
+    @coroutine
+    def read(self, n=-1):
+        if n > 0:
+            yield
+            data = self.fd.read(n)
+            if not bool(data):
+                self.eof = True
+                self.fd.close()
+            return data
+        else:
+            foo
+
+
 class LocalRessource(Ressource):
     """ resource accessing local files """
-    def __init__(self, path, read=['cat', ...], limit='64m'):
+    def __init__(self, path, read=None, limit='64m'):
         self.path = Path(path)
-        if ... not in read:
-            read = read + [...]
         self.read = read
         self.limit = param.sizeof(limit)
 
@@ -359,6 +383,9 @@ class LocalRessource(Ressource):
 
     @coroutine
     def reader(self, offset=None):
+        if not self.read:
+            return LocalReader(self.path)
+
         cmd = [str(self.path) if arg==... else arg for arg in self.read]
         proc = (yield from asyncio.create_subprocess_exec(*cmd, 
                     stdout=asyncio.subprocess.PIPE, limit=self.limit))
