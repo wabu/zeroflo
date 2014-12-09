@@ -91,8 +91,11 @@ class Watch(Paramed, Unit):
 
             t = tag.add(access=access.name,
                         stable=stable, **loc._asdict())
-            if start and loc.begin != pd.Timestamp(start, tz=loc.begin.tz):
-                t['skip_to_time'] = start
+            if start:
+                if loc.begin < pd.Timestamp(start, tz=loc.begin.tz):
+                    t['skip_to_time'] = start
+                else:
+                    start = None
 
             if last != access.name:
                 last = access.name
