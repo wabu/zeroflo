@@ -1,5 +1,4 @@
 from ...core import asyncio, coroutine, Unit, inport, outport
-from pyadds.annotate import delayed
 from ...ext.params import Paramed, param
 
 from pyadds.logging import log
@@ -8,9 +7,10 @@ import pandas as pd
 import zlib
 import time
 
+
 @log
 class Watch(Paramed, Unit):
-    """ watch a ressource directory for located resources becomming available """
+    """watch a ressource directory for located resources becomming available """
     def __init__(self, accesses, **kws):
         super().__init__(**kws)
         self.accesses = accesses
@@ -75,18 +75,20 @@ class Watch(Paramed, Unit):
                 self.__log.debug('%s-access is available [%s]', access.name, time)
             else:
                 self.__log.debug('waiting for all %d accesses [%s]', len(accesses), time)
-                done,pending = yield from asyncio.wait([a.get(time) for a in accesses], 
+                done,pending = yield from asyncio.wait([a.get(time) for a in accesses],
                                                        return_when=asyncio.FIRST_COMPLETED)
                 for p in pending:
                     p.cancel()
-                
+
                 done = {access: (loc, res) for access, loc, res in [r.result() for r in done]}
-                for a in accesses:
-                    if a in done:
-                        access, loc, res = d.result()
+                for access in accesses:
+                    if access in done:
+                        loc, res = done[a].result()
                         break
+                else:
+                    assert None, "one of the accesses has to be in done"
                 self.__log.debug('finished with %s-access (%d)', access.name, len(done))
-                
+
             stable = access.isstable(time)
 
             t = tag.add(access=access.name,
@@ -100,6 +102,7 @@ class Watch(Paramed, Unit):
             if last != access.name:
                 last = access.name
                 self.__log.info('using %s-access for %s ...', access.name, time)
+
             yield from loc.path >> t >> self.out
             time = loc.end
 
@@ -143,7 +146,6 @@ class Reader(Paramed, Unit):
         eof_continued = 0
 
         next = None
-        foo = False
 
         start = time.time()
         first = None
@@ -160,7 +162,7 @@ class Reader(Paramed, Unit):
             finish = time.time() + .2
             while not eof and size < chunksize:
                 timeout = finish - time.time()
-                if timeout <= 0: 
+                if timeout <= 0:
                     break
                 next = asyncio.async(reader.read(chunksize))
                 try:
@@ -185,11 +187,11 @@ class Reader(Paramed, Unit):
             # if we have data output it
             if chunk or done:
                 if not done and eof_continued:
-                    self.__log.debug('eof status changed after %d (+%d...) [%s:%d]', 
+                    self.__log.debug('eof status changed after %d (+%d...) [%s:%d]',
                             eof_continued, size, path, offset)
                     eof_continued = 0
 
-                yield from (chunk >> tag.add(size=size, offset=offset, chunk=chunks) 
+                yield from (chunk >> tag.add(size=size, offset=offset, chunk=chunks)
                                   >> self.out)
                 if not offset:
                     first = time.time()
@@ -208,8 +210,8 @@ class Reader(Paramed, Unit):
                     except OSError as e:
                         pass
                 if eof_continued > 4:
-                    yield from (b'' 
-                            >> tag.add(flush=True, offset=offset, chunk=chunks, size=0) 
+                    yield from (b''
+                            >> tag.add(flush=True, offset=offset, chunk=chunks, size=0)
                             >> self.out)
                     break
 
@@ -218,7 +220,7 @@ class Reader(Paramed, Unit):
         end = time.time()
 
         size = yield from resource.size
-        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin, 
+        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin,
                          first-start, end-start, chunks, waits, conts, times, offset, size)
         #XXX not usable with decompression assert size == offset, 'fetched data size different from size info'
 
@@ -281,5 +283,5 @@ class Gunzip(Unit):
 
         if tag.flush:
             yield from self.flush(tag)
-                
+
 
