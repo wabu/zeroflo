@@ -386,7 +386,7 @@ class LocalRessource(Ressource):
     @coroutine
     def reader(self, offset=None):
         if not self.read:
-            return LocalReader(self.path, offest=offset)
+            return LocalReader(self.path, offset=offset)
 
         cmd = [str(self.path) if arg==... else arg for arg in self.read]
         proc = (yield from asyncio.create_subprocess_exec(*cmd,
