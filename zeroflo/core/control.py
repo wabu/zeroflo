@@ -78,11 +78,18 @@ class Process:
     def shutdown(self):
         @coroutine
         def down():
-            self.__log.info('shutdown closes all channels')
-            yield from asyncio.gather(*(
-                    chan.close() for outs in self.outs.values() for _,chan in outs))
-            yield from asyncio.gather(*(
-                    unit.__teardown__() for unit in self.units.values()))
+            try:
+                self.__log.debug('shutdown closes all channels')
+                yield from asyncio.gather(*(
+                        chan.close() for outs in self.outs.values() for _,chan in outs))
+                self.__log.debug('tearing down units')
+                yield from asyncio.gather(*(
+                        unit.__teardown__() for unit in self.units.values()))
+            except Exception as e:
+                self.__log.error('%s occured when shutting down', e, exc_info=True)
+
+            yield from asyncio.sleep(.2)
+            self.__log.debug('exiting')
             exit(0)
         asyncio.async(down())
 
@@ -186,6 +193,7 @@ class Control:
             future = asyncio.gather(*[shutdown(remote, proc)
                         for remote,proc in zip(self.remotes.values(), self.procs.values())], 
                         return_exceptions=True)
+
             asyncio.get_event_loop().run_until_complete(future)
             for r in future:
                 if r:
