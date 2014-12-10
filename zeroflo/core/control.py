@@ -46,7 +46,7 @@ class Process:
 
         for l in ins:
             yield from self.receiver[l.endpoint].register(unit, l)
-            
+
     @coroutine
     def activate(self, outs, ins):
         for l in outs:
@@ -60,12 +60,12 @@ class Process:
         return Task.all_tasks()
 
     def handler(self, src):
-        outs = self.outs[src] 
+        outs = self.outs[src]
         aquire = self.tracker.aquire
         @coroutine
         def handle(self, packet):
             aq = asyncio.gather(*(aquire(tgt) for tgt,_ in outs))
-            dl = asyncio.gather(*(chan.deliver((tgt, packet)) 
+            dl = asyncio.gather(*(chan.deliver((tgt, packet))
                         for tgt,chan in outs))
             yield from asyncio.gather(aq, dl)
         return handle
@@ -112,7 +112,8 @@ class Control:
     def replay(self):
         @coroutine
         def replay():
-            for coro in self.queued:
+            while self.queued:
+                coro = self.queued.pop()
                 yield from coro
         yield from replay()
         #return asyncio.async(replay())
@@ -156,7 +157,7 @@ class Control:
                 proc = yield from self.spawner.cospawn(remote.__remote__, __name__=str(space))
                 with open(path.namespace()+'/pids', 'a') as f:
                     f.write('{}\n'.format(proc.pid))
-                
+
                 yield from remote.__setup__()
 
                 yield from remote.setup()
@@ -191,7 +192,7 @@ class Control:
                         p.terminate()
 
             future = asyncio.gather(*[shutdown(remote, proc)
-                        for remote,proc in zip(self.remotes.values(), self.procs.values())], 
+                        for remote,proc in zip(self.remotes.values(), self.procs.values())],
                         return_exceptions=True)
 
             asyncio.get_event_loop().run_until_complete(future)
@@ -202,7 +203,7 @@ class Control:
             self.procs.clear()
             self.remotes.clear()
         os.system("rm -rf {!r}".format(self.path))
-    
+
     @coroutine
     def activate(self, unit, actives=set()):
         u = self.tp.lookup(unit)
@@ -226,6 +227,8 @@ class Control:
 
     @coroutine
     def await(self, unit):
+        yield from self.replay()
+
         deps = self.tp.dependencies(unit, kind='target')
         self.__log.debug('%s depends on %s', unit, deps)
         deps = [p.pid for p in deps]

@@ -98,7 +98,7 @@ class Watch(Paramed, Unit):
                 self.__log.debug('finished with %s-access (%d)',
                                  access.name, len(done))
 
-            if loc.end == before:
+            if loc.end == pd.Timestamp(before, tz=loc.end.tz):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
                                    time, loc.begin, loc.end)
 
