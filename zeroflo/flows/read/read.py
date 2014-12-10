@@ -90,7 +90,7 @@ class Watch(Paramed, Unit):
                         for access, loc, res in [r.result() for r in done]}
                 for access in accesses:
                     if access in done:
-                        loc, res = done[access].result()
+                        loc, res = done[access]
                         break
                 else:
                     assert None, "one of the accesses has to be in done"
