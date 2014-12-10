@@ -19,7 +19,7 @@ class Unit:
     def __init__(self, *, ctx=None, name=None):
         self.name = name or name_of(self)
         self.id = ctx.register(self).id
-        
+
     @coroutine
     def __setup__(self):
         pass
@@ -159,7 +159,7 @@ class Port:
 
         # get context bla ...
         call = CallHelper()
-        # XXX set call to be local ... 
+        # XXX set call to be local ...
         tp.add_link(call.out, self)
 
         yield from ctrl.activate(call)
@@ -306,6 +306,10 @@ class Parts:
         other >> self.process
         return self
 
+    def iter(self, *args, **kws):
+        self.process.delay(*args, **kws)
+        yield from self.out
+
 
 class part(cached):
     pass
@@ -338,7 +342,7 @@ class YieldHelper(Unit):
         await = asyncio.async(ctrl.await(self))
         while True:
             get = asyncio.async(self.q.get())
-            run(asyncio.wait([await, get], 
+            run(asyncio.wait([await, get],
                              return_when=asyncio.FIRST_COMPLETED))
             if get.done():
                 yield get.result()
