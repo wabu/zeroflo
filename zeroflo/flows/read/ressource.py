@@ -307,7 +307,7 @@ class UnionRessource(Ressource):
     @coroutine
     def stat(self):
         first = yield from self._first()
-        return (yield from first.stat)
+        return (yield from first.stat) if first else None
 
     @coroutine
     def reader(self, offset=0):
