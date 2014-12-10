@@ -2,28 +2,32 @@ from pyadds.annotate import cached
 from ...ext.params import param, Paramed
 
 import pandas as pd
-import os
 
 import asyncio
 coroutine = asyncio.coroutine
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple
 from pathlib import Path
 
-from pyadds.logging import log, logging
+from pyadds.logging import log
 
 
 class Stats(namedtuple('Stats', 'name, dir, modified, size')):
+
     """ simple ressource stats """
+
     def __str__(self):
         dct = {f: getattr(self, f) for f in self._fields}
-        return '{name:<12} {typ} {modified} {size:12d}'.format(typ='d' if self.dir else 'f', **dct)
+        return '{name:<12} {typ} {modified} {size:12d}'.format(
+            typ='d' if self.dir else 'f', **dct)
 
     __repr__ = __str__
 
 
 class Ressource:
+
     """ ressource access """
+
     def __init__(self, path):
         self.path = path
 
@@ -36,7 +40,8 @@ class Ressource:
     @property
     @coroutine
     def stat(self):
-        """ stats (name, dir, modified, size) of this ressource of None if not existent"""
+        """ stats (name, dir, modified, size) of this ressource of None if not
+            existent """
         raise NotImplementedError
 
     @property
@@ -78,6 +83,7 @@ class Ressource:
 
 
 class Directory(Ressource):
+
     """ directory access """
     @coroutine
     def listen(self):
@@ -140,10 +146,11 @@ class Directory(Ressource):
                 yield self.open(stat.name)
 
 
-
 Location = namedtuple('Location', 'path, begin, end, available')
 
+
 class LocateByTime():
+
     def __init__(self, format, *, width, delay='0s', tz=None, **kws):
         self.width = width = pd.datetools.to_offset(width)
         self.delay = pd.datetools.to_offset(delay)
@@ -161,32 +168,48 @@ class LocateByTime():
         def conversion(val):
             if isinstance(val, str):
                 # assume strftime string
-                return lambda t: t.strftime(val)
+                return (lambda t: t.strftime(val))
             if isinstance(val, pd.offsets.Tick):
                 # by multiples of ticks since epoch
                 nanos = val.nanos
-                return lambda t: t.value // nanos
+                return (lambda t: t.value // nanos)
             if isinstance(val, int):
                 # milli seconds
                 nanos = int(val * 10e6)
-                return lambda t: t.value // nanos
+                return (lambda t: t.value // nanos)
             if isinstance(val, float):
                 # seconds
                 nanos = int(val * 1e9)
-                return lambda t: t.value // nanos
+                return (lambda t: t.value // nanos)
             raise ValueError("No conversion possible with %s" % type(val))
-        args = {name: conversion(val) for name,val in kws.items()}
+        args = {name: conversion(val) for name, val in kws.items()}
+
         def convert(time):
-            return format.format(time=time, **{k: v(time) for k,v in args.items()})
+            return format.format(
+                time=time, **{k: v(time) for k, v in args.items()})
         return convert
 
     def location(self, time='now'):
         time = pd.Timestamp(time, tz=self.tz)
-        start = pd.Timestamp(time.value // self.width.nanos * self.width.nanos, tz=time.tz)
-        return Location(self.convert(start), start, start+self.width, start+self.width+self.delay)
+        start = pd.Timestamp(
+            (time.value +
+             1) //
+            self.width.nanos *
+            self.width.nanos,
+            tz=time.tz)
+        return Location(
+            self.convert(start),
+            start,
+            start +
+            self.width,
+            start +
+            self.width +
+            self.delay)
+
 
 @log
 class Access(Paramed):
+
     def __init__(self, name, root, locate, **opts):
         super().__init__(**opts)
         self.name = name
@@ -253,7 +276,11 @@ class Access(Paramed):
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
                     if stat:
-                        self.__log.warning('skipped %d to %s (%s)', k, skip_loc.path, skip_loc.available)
+                        self.__log.warning(
+                            'skipped %d to %s (%s)',
+                            k,
+                            skip_loc.path,
+                            skip_loc.available)
                         res = skip_res
                         loc = skip_loc
                         stat = skip_stat
@@ -281,7 +308,9 @@ class Access(Paramed):
 
 
 class UnionRessource(Ressource):
+
     """ unify multiple resources into single one """
+
     def __init__(self, items):
         self.items = items
 
@@ -316,16 +345,19 @@ class UnionRessource(Ressource):
 
 
 class UnionDirectory(Directory, UnionRessource):
+
     """ unify multiple directories into single one """
     @coroutine
     def listen(self):
-        lists = yield from asyncio.gather([item.listen() for item in self.items])
+        lists = yield from asyncio.gather([item.listen()
+                                           for item in self.items])
         done = set()
         return [done.add(f) or f for ls in lists for f in ls if f not in done]
 
     @coroutine
     def glob(self, pattern, max_depth=0):
-        lists = yield from asyncio.gather([item.glob(pattern, max_depth) for item in self.items])
+        lists = yield from asyncio.gather([item.glob(pattern, max_depth)
+                                           for item in self.items])
         done = set()
         return [done.add(f) or f for ls in lists for f in ls if f not in done]
 
@@ -337,6 +369,7 @@ class UnionDirectory(Directory, UnionRessource):
 
 
 class LocalReader:
+
     def __init__(self, path, offset=None):
         self.fd = path.open(mode='rb', buffering=0)
         self.eof = False
@@ -360,11 +393,13 @@ class LocalReader:
                 self.fd.close()
             return data
         else:
-            foo
+            raise NotImplementedError()
 
 
 class LocalRessource(Ressource):
+
     """ resource accessing local files """
+
     def __init__(self, path, read=None, limit='64m'):
         self.path = Path(path)
         self.read = read
@@ -376,21 +411,26 @@ class LocalRessource(Ressource):
         try:
             path = self.path
             stat = path.stat()
-            return Stats(path.name, path.is_dir(),
-                    pd.Timestamp(stat.st_mtime, unit='s',
-                        tz=pd.datetools.dateutil.tz.tzlocal()), stat.st_size)
+            return Stats(
+                path.name,
+                path.is_dir(),
+                pd.Timestamp(
+                    stat.st_mtime,
+                    unit='s',
+                    tz=pd.datetools.dateutil.tz.tzlocal()),
+                stat.st_size)
         except FileNotFoundError:
             return
-
 
     @coroutine
     def reader(self, offset=None):
         if not self.read:
-            return LocalReader(self.path, offset=offset)
+            self.read = ['cat', ...]
+        #    return LocalReader(self.path, offset=offset)
 
-        cmd = [str(self.path) if arg==... else arg for arg in self.read]
+        cmd = [str(self.path) if arg == ... else arg for arg in self.read]
         proc = (yield from asyncio.create_subprocess_exec(*cmd,
-                    stdout=asyncio.subprocess.PIPE, limit=self.limit))
+                stdout=asyncio.subprocess.PIPE, limit=self.limit))
         if not proc.stdout._transport:
             tr = proc._transport.get_pipe_transport(1)
             proc.stdout.set_transport(tr)
@@ -400,6 +440,7 @@ class LocalRessource(Ressource):
 
 
 class LocalDirectory(LocalRessource, Directory):
+
     """ directory accessing local dirs """
     @coroutine
     def listen(self):
@@ -410,5 +451,3 @@ class LocalDirectory(LocalRessource, Directory):
 
     def go(self, name):
         return LocalDirectory(str(self.path / name))
-
-
