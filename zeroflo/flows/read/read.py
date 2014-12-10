@@ -51,6 +51,7 @@ class Watch(Paramed, Unit):
                         '...' if pd.isnull(end) else end)
 
         last = None
+        before = None
         accesses = self.accesses
         while not time >= pd.Timestamp(end, tz=time.tz):
             avails = [a.available(time) for a in accesses]
@@ -89,13 +90,17 @@ class Watch(Paramed, Unit):
                         for access, loc, res in [r.result() for r in done]}
                 for access in accesses:
                     if access in done:
-                        loc, res = done[a].result()
+                        loc, res = done[access].result()
                         break
                 else:
                     assert None, "one of the accesses has to be in done"
 
                 self.__log.debug('finished with %s-access (%d)',
                                  access.name, len(done))
+
+            if loc.end == before:
+                self.__log.warning('seems we start too loop %s -> %s - %s',
+                                   time, loc.begin, loc.end)
 
             stable = access.isstable(time)
 
@@ -112,6 +117,8 @@ class Watch(Paramed, Unit):
                 self.__log.info('using %s-access for %s ...', access.name, time)
 
             yield from loc.path >> t.add() >> self.out
+
+            before = time
             time = loc.end
 
 
