@@ -230,7 +230,7 @@ class Access(Paramed):
             yield from asyncio.sleep(wait)
 
         return loc
-        
+
     @coroutine
     def get(self, time):
         loc = (yield from self.wait(time))
@@ -263,7 +263,7 @@ class Access(Paramed):
 
                 if stat:
                     break
-            
+
             sleep = min(max(.2, wait/10), 4)
             self.__log.debug('sleeping %f by %s', sleep, self.name)
             yield from asyncio.sleep(sleep)
@@ -292,7 +292,7 @@ class UnionRessource(Ressource):
             return item if (yield from item.exists) else None
 
         pending = map(maybe, self.items)
-        while pending: 
+        while pending:
             done, pending = yield from asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 item = task.result()
@@ -337,9 +337,11 @@ class UnionDirectory(Directory, UnionRessource):
 
 
 class LocalReader:
-    def __init__(self, path):
+    def __init__(self, path, offset=None):
         self.fd = path.open(mode='rb', buffering=0)
         self.eof = False
+        if offset:
+            self.fd.seek(offset)
 
     @coroutine
     def read_chunk(self, n=102400):
@@ -374,20 +376,20 @@ class LocalRessource(Ressource):
         try:
             path = self.path
             stat = path.stat()
-            return Stats(path.name, path.is_dir(), 
-                    pd.Timestamp(stat.st_mtime, unit='s', 
+            return Stats(path.name, path.is_dir(),
+                    pd.Timestamp(stat.st_mtime, unit='s',
                         tz=pd.datetools.dateutil.tz.tzlocal()), stat.st_size)
         except FileNotFoundError:
             return
-            
+
 
     @coroutine
     def reader(self, offset=None):
         if not self.read:
-            return LocalReader(self.path)
+            return LocalReader(self.path, offest=offset)
 
         cmd = [str(self.path) if arg==... else arg for arg in self.read]
-        proc = (yield from asyncio.create_subprocess_exec(*cmd, 
+        proc = (yield from asyncio.create_subprocess_exec(*cmd,
                     stdout=asyncio.subprocess.PIPE, limit=self.limit))
         if not proc.stdout._transport:
             tr = proc._transport.get_pipe_transport(1)
@@ -408,5 +410,5 @@ class LocalDirectory(LocalRessource, Directory):
 
     def go(self, name):
         return LocalDirectory(str(self.path / name))
-            
-            
+
+

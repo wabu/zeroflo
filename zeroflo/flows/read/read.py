@@ -47,7 +47,8 @@ class Watch(Paramed, Unit):
         except (TypeError, ValueError):
             end = pd.Timestamp(tag.end, tz=tz)
 
-        self.__log.info('fetching from %s to %s', start, '...' if pd.isnull(end) else end)
+        self.__log.info('fetching from %s to %s', start,
+                        '...' if pd.isnull(end) else end)
 
         last = None
         accesses = self.accesses
@@ -62,7 +63,7 @@ class Watch(Paramed, Unit):
                 yield from asyncio.sleep(wait)
                 now = pd.Timestamp('now', tz=avail.tz)
 
-            for avail,access in zip(avails, accesses):
+            for avail, access in zip(avails, accesses):
                 if avail <= now:
                     s = (yield from access.stat(time))
                     if s:
@@ -72,22 +73,28 @@ class Watch(Paramed, Unit):
 
             if stat:
                 access, loc, res = stat
-                self.__log.debug('%s-access is available [%s]', access.name, time)
+                self.__log.debug('%s-access is available [%s]',
+                                 access.name, time)
             else:
-                self.__log.debug('waiting for all %d accesses [%s]', len(accesses), time)
-                done,pending = yield from asyncio.wait([a.get(time) for a in accesses],
-                                                       return_when=asyncio.FIRST_COMPLETED)
+                self.__log.debug('waiting for all %d accesses [%s]',
+                                 len(accesses), time)
+                done, pending = yield from asyncio.wait(
+                    [a.get(time) for a in accesses],
+                    return_when=asyncio.FIRST_COMPLETED)
                 for p in pending:
                     p.cancel()
 
-                done = {access: (loc, res) for access, loc, res in [r.result() for r in done]}
+                done = {access: (loc, res)
+                        for access, loc, res in [r.result() for r in done]}
                 for access in accesses:
                     if access in done:
                         loc, res = done[a].result()
                         break
                 else:
                     assert None, "one of the accesses has to be in done"
-                self.__log.debug('finished with %s-access (%d)', access.name, len(done))
+
+                self.__log.debug('finished with %s-access (%d)',
+                                 access.name, len(done))
 
             stable = access.isstable(time)
 
@@ -166,7 +173,8 @@ class Reader(Paramed, Unit):
                     break
                 next = asyncio.async(reader.read(chunksize))
                 try:
-                    new = yield from asyncio.wait_for(asyncio.shield(next), timeout=timeout)
+                    new = yield from asyncio.wait_for(asyncio.shield(next),
+                                                      timeout=timeout)
                     eof = reader.at_eof()
                     next = None
                     if not new:
@@ -187,18 +195,20 @@ class Reader(Paramed, Unit):
             # if we have data output it
             if chunk or done:
                 if not done and eof_continued:
-                    self.__log.debug('eof status changed after %d (+%d...) [%s:%d]',
-                            eof_continued, size, path, offset)
+                    self.__log.debug('eof status changed after '
+                                     '%d (+%d...) [%s:%d]',
+                                     eof_continued, size, path, offset)
                     eof_continued = 0
 
-                yield from (chunk >> tag.add(size=size, offset=offset, chunk=chunks)
-                                  >> self.out)
+                yield from (chunk
+                            >> tag.add(size=size, offset=offset, chunk=chunks)
+                            >> self.out)
                 if not offset:
                     first = time.time()
                 assert size == len(chunk), 'size is right'
                 offset += size
 
-            # eof but not sure if file is stable yet, we request beyond current end
+            # eof but not sure if file is stable yet, request beyond current end
             if not done and eof:
                 while eof_continued <= 4:
                     yield from asyncio.sleep(.1)
@@ -207,12 +217,13 @@ class Reader(Paramed, Unit):
                     try:
                         reader = yield from resource.reader(offset=offset)
                         break
-                    except OSError as e:
+                    except OSError:
                         pass
                 if eof_continued > 4:
                     yield from (b''
-                            >> tag.add(flush=True, offset=offset, chunk=chunks, size=0)
-                            >> self.out)
+                                >> tag.add(flush=True, offset=offset,
+                                           chunk=chunks, size=0)
+                                >> self.out)
                     break
 
             chunks += 1
@@ -220,9 +231,12 @@ class Reader(Paramed, Unit):
         end = time.time()
 
         size = yield from resource.size
-        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]', path, tag.begin,
-                         first-start, end-start, chunks, waits, conts, times, offset, size)
-        #XXX not usable with decompression assert size == offset, 'fetched data size different from size info'
+        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]',
+                         path, tag.begin,
+                         first-start, end-start,
+                         chunks, waits, conts, times, offset, size)
+        # XXX not usable with decompression
+        # assert size == offset, 'fetched data size different from size info'
 
 
 class ListFiles(Paramed, Unit):
@@ -269,7 +283,7 @@ class Gunzip(Unit):
             yield from self.flush(tag)
 
         if not self.decomp:
-            decomp = self.decomp = zlib.decompressobj(zlib.MAX_WBITS|32)
+            decomp = self.decomp = zlib.decompressobj(zlib.MAX_WBITS | 32)
             self.offset = 0
         else:
             decomp = self.decomp
@@ -283,5 +297,3 @@ class Gunzip(Unit):
 
         if tag.flush:
             yield from self.flush(tag)
-
-
