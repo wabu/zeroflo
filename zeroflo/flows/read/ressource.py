@@ -185,26 +185,18 @@ class LocateByTime():
         args = {name: conversion(val) for name, val in kws.items()}
 
         def convert(time):
-            return format.format(
-                time=time, **{k: v(time) for k, v in args.items()})
+            return format.format(time=time,
+                                 **{k: v(time) for k, v in args.items()})
         return convert
 
     def location(self, time='now'):
         time = pd.Timestamp(time, tz=self.tz)
-        start = pd.Timestamp(
-            (time.value +
-             1) //
-            self.width.nanos *
-            self.width.nanos,
-            tz=time.tz)
-        return Location(
-            self.convert(start),
-            start,
-            start +
-            self.width,
-            start +
-            self.width +
-            self.delay)
+        nanos = time.value // self.width.nanos * self.width.nanos
+        start = pd.Timestamp(nanos, tz=time.tz)
+        return Location(self.convert(start),
+                        start,
+                        start + self.width,
+                        start + self.width + self.delay)
 
 
 @log
@@ -369,7 +361,6 @@ class UnionDirectory(Directory, UnionRessource):
 
 
 class LocalReader:
-
     def __init__(self, path, offset=None):
         self.fd = path.open(mode='rb', buffering=0)
         self.eof = False
@@ -386,7 +377,6 @@ class LocalReader:
     @coroutine
     def read(self, n=-1):
         if n > 0:
-            yield
             data = self.fd.read(n)
             if not bool(data):
                 self.eof = True

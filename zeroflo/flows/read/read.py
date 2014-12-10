@@ -63,6 +63,7 @@ class Watch(Paramed, Unit):
                 yield from asyncio.sleep(wait)
                 now = pd.Timestamp('now', tz=avail.tz)
 
+            stat = None
             for avail, access in zip(avails, accesses):
                 if avail <= now:
                     s = (yield from access.stat(time))
@@ -110,7 +111,7 @@ class Watch(Paramed, Unit):
                 last = access.name
                 self.__log.info('using %s-access for %s ...', access.name, time)
 
-            yield from loc.path >> t >> self.out
+            yield from loc.path >> t.add() >> self.out
             time = loc.end
 
 
