@@ -104,7 +104,7 @@ class Control:
         self.remotes = {}
         self.units = {}
         self.queued = []
-        atexit.register(self.__del__)
+        atexit.register(self.shutdown)
 
     def queue(self, coro):
         self.queued.append(coro)
@@ -177,9 +177,7 @@ class Control:
             self.procs[space] = procs
             return remote
 
-    def __del__(self):
-        atexit.unregister(self.__del__)
-
+    def shutdown(self):
         if self.procs:
             self.__log.info('shuting down all processes')
             @coroutine
@@ -202,7 +200,13 @@ class Control:
 
             self.procs.clear()
             self.remotes.clear()
+
         os.system("rm -rf {!r}".format(self.path))
+
+
+    def __del__(self):
+        self.shutdown()
+        atexit.unregister(self.shutdown)
 
     @coroutine
     def activate(self, unit, actives=set()):
