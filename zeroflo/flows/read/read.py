@@ -33,11 +33,20 @@ class Watch(Paramed, Unit):
     @inport
     def process(self, start, tag):
         tz = tag.tz
-        start = start or tag.start or '1h'
+        start = orig = start or tag.start or '1h'
         try:
             start = pd.Timestamp('now', tz=tz) - pd.datetools.to_offset(start)
         except ValueError:
             start = pd.Timestamp(start, tz=tz)
+
+        if tag.reset:
+            if tag.reset is True:
+                rel = pd.datetools.to_offset(orig)
+                rel = pd.datetools.to_offset(rel.rule_code)
+            else:
+                rel = pd.datetools.to_offset(tag.on)
+            val = rel.nanos
+            start = pd.Timestamp(start.value // val * val, tz=start.tz)
 
         tz = start.tz
         time = pd.Timestamp(start, tz=tz)
@@ -46,6 +55,10 @@ class Watch(Paramed, Unit):
             end = start + pd.datetools.to_offset(tag.end)
         except (TypeError, ValueError):
             end = pd.Timestamp(tag.end, tz=tz)
+
+        if not pd.isnull(end) and tag.on:
+            rel = pd.datetools.to_offset(tag.on).nanos
+            end = pd.Timestamp(end.value // rel * rel, tz=end.tz)
 
         self.__log.info('fetching from %s to %s', start,
                         '...' if pd.isnull(end) else end)

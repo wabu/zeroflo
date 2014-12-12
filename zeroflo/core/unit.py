@@ -94,7 +94,6 @@ class Unit:
         class Insert:
             def __rshift__(_, other):
                 ( self -- other )
-                print('adding {} >> {} >> {}'.format(self, insert, other))
                 ( self >> insert >> other )
                 return other
         return Insert()
@@ -148,7 +147,7 @@ class Port:
 
     @coroutine
     @withctrl
-    def run(self, load, tag=None, ctrl=None, **kws):
+    def run(self, load=None, tag=None, ctrl=None, **kws):
         tp = ctrl.tp
 
         if tag is None:
@@ -216,7 +215,6 @@ class Port:
     def __sub__(self, other, tp):
         if not isinstance(other, Port):
             return NotImplemented
-        print('removing {} >> {}'.format(self, other))
         return tp.remove_links(self, other)
 
     def __pos__(self):
