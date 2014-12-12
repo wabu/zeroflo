@@ -178,6 +178,7 @@ class Control:
             return remote
 
     def shutdown(self):
+        atexit.unregister(self.shutdown)
         if self.procs:
             self.__log.info('shuting down all processes')
             @coroutine
@@ -206,7 +207,6 @@ class Control:
 
     def __del__(self):
         self.shutdown()
-        atexit.unregister(self.shutdown)
 
     @coroutine
     def activate(self, unit, actives=set()):
