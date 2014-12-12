@@ -108,15 +108,18 @@ class Watch(Paramed, Unit):
                         stable=stable, **loc._asdict())
             if start:
                 if loc.begin < pd.Timestamp(start, tz=loc.begin.tz):
-                    t['skip_to_time'] = start
+                    t['skip_to_time'] = pd.Timestamp(start, tz=loc.begin.tz)
                 else:
                     start = None
+
+            if loc.end > pd.Timestamp(end, tz=loc.end.tz):
+                t['end_at_time'] = pd.Timestamp(end, tz=loc.end.tz)
 
             if last != access.name:
                 last = access.name
                 self.__log.info('using %s-access for %s ...', access.name, time)
 
-            yield from loc.path >> t.add() >> self.out
+            yield from loc.path >> t >> self.out
 
             before = time
             time = loc.end

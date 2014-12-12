@@ -90,7 +90,7 @@ class Process:
 
             yield from asyncio.sleep(.2)
             self.__log.debug('exiting')
-            exit(0)
+            asyncio.get_event_loop().stop()
         asyncio.async(down())
 
 @log

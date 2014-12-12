@@ -13,6 +13,7 @@ from pyadds import spawn
 
 def setup_aiozmq():
     asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
+    pass
 
 class Context:
     __active__ = None
@@ -71,9 +72,9 @@ class Context:
     def setup(self, setup=None):
         if setup:
             setup()
-        setup_aiozmq()
+        #setup_aiozmq()
 
-        self.spawner.add_setup(setup_aiozmq)
+        #self.spawner.add_setup(setup_aiozmq)
         self.spawner.add_setup(setup)
 
         with self.activate('tp'):
@@ -112,4 +113,3 @@ def with_active(key):
 withtp = with_active('tp')
 withctrl = with_active('ctrl')
 withctx = with_active('ctx')
-

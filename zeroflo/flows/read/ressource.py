@@ -314,7 +314,8 @@ class UnionRessource(Ressource):
 
         pending = map(maybe, self.items)
         while pending:
-            done, pending = yield from asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            done, pending = yield from asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 item = task.result()
                 if item:
@@ -415,8 +416,7 @@ class LocalRessource(Ressource):
     @coroutine
     def reader(self, offset=None):
         if not self.read:
-            self.read = ['cat', ...]
-        #    return LocalReader(self.path, offset=offset)
+            return LocalReader(self.path, offset=offset)
 
         cmd = [str(self.path) if arg == ... else arg for arg in self.read]
         proc = (yield from asyncio.create_subprocess_exec(*cmd,

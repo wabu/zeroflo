@@ -196,7 +196,7 @@ class ZmqClient(ZmqOut):
     def setup(self):
         self.__log.debug('%s spawning zlb', self)
         lb = ZmqLoadBalance(self.endpoint)
-        self.proc = spawn.get_spawner().spawn(lb.run)
+        self.proc = spawn.get_spawner('forkserver').spawn(lb.run)
         self.__log.debug('%s spawned zlb %s', self, self.proc)
         yield from super().setup()
 
