@@ -66,13 +66,22 @@ class Status(Paramed, Unit):
     @inport
     def process(self, data, tag):
         self.timing.set()
-        print(self.format.format(__data__=data, __tag__=tag, __time__=self.timing, **tag), end=self.end, flush=True)
+        try:
+            length = len(data)
+        except Exception:
+            pass
+        print(self.format.format(__data__=data,
+                                 __len__=length,
+                                 __tag__=tag,
+                                 __time__=self.timing,
+                                 **tag), end=self.end, flush=True)
         yield from []
+
 
 class match(Unit):
     def __init__(self, **matches):
         super().__init__()
-        self.matches = {k: v if isinstance(v, set) else {v} 
+        self.matches = {k: v if isinstance(v, set) else {v}
                         for k,v in matches.items()}
 
     @outport
@@ -242,7 +251,7 @@ class Collect(Paramed, Unit):
 
             if datas:
                 try:
-                    data,t = yield from asyncio.wait_for(q.get(), 
+                    data,t = yield from asyncio.wait_for(q.get(),
                             first + timeout - time.time())
                 except asyncio.TimeoutError:
                     flush = True

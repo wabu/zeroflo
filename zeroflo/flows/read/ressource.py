@@ -184,16 +184,16 @@ class LocateByTime():
             raise ValueError("No conversion possible with %s" % type(val))
         args = {name: conversion(val) for name, val in kws.items()}
 
-        def convert(time):
-            return format.format(time=time,
-                                 **{k: v(time) for k, v in args.items()})
+        def convert(time, **adds):
+            adds.update(**{k: v(time) for k, v in args.items()})
+            return time.strftime(format.format(time=time, **adds))
         return convert
 
-    def location(self, time='now'):
+    def location(self, time='now', **adds):
         time = pd.Timestamp(time, tz=self.tz)
         nanos = time.value // self.width.nanos * self.width.nanos
         start = pd.Timestamp(nanos, tz=time.tz)
-        return Location(self.convert(start),
+        return Location(self.convert(start, **adds),
                         start,
                         start + self.width,
                         start + self.width + self.delay)
@@ -224,20 +224,20 @@ class Access(Paramed):
     def tag(self, value={}):
         return value
 
-    def available(self, time):
-        loc = self.locate.location(time)
+    def available(self, time, **adds):
+        loc = self.locate.location(time, **adds)
         return loc.available
 
     @coroutine
-    def stat(self, time):
-        loc = self.locate.location(time)
+    def stat(self, time, **adds):
+        loc = self.locate.location(time, **adds)
         res = self.root.open(loc.path)
         if (yield from res.stat):
             return self, loc, res
 
     @coroutine
-    def wait(self, time):
-        loc = self.locate.location(time)
+    def wait(self, time, **adds):
+        loc = self.locate.location(time, **adds)
         avail = loc.available
 
         wait = (avail - pd.Timestamp('now', tz=avail.tz)).total_seconds()
@@ -247,8 +247,8 @@ class Access(Paramed):
         return loc
 
     @coroutine
-    def get(self, time):
-        loc = (yield from self.wait(time))
+    def get(self, time, **adds):
+        loc = (yield from self.wait(time, **adds))
         avail = loc.available
         res = self.root.open(loc.path)
 
@@ -264,7 +264,7 @@ class Access(Paramed):
             if now > avail + self.skip_after:
                 skip_loc = loc
                 for k in range(1, self.skip_num+1):
-                    skip_loc = self.locate.location(skip_loc.end)
+                    skip_loc = self.locate.location(skip_loc.end, **adds)
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
                     if stat:
@@ -290,8 +290,8 @@ class Access(Paramed):
         self.__log.debug('done getting by %s', self.name)
         return self, loc, res
 
-    def isstable(self, time):
-        loc = self.locate.location(time)
+    def isstable(self, time, **adds):
+        loc = self.locate.location(time, **adds)
         avail = loc.available
         return avail + self.stable < pd.Timestamp('now', tz=avail.tz)
 

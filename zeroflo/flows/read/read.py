@@ -67,20 +67,20 @@ class Watch(Paramed, Unit):
         before = None
         accesses = self.accesses
         while not time >= pd.Timestamp(end, tz=time.tz):
-            avails = [a.available(time) for a in accesses]
+            avails = [a.available(time, **tag) for a in accesses]
             avail = min(avails)
 
             now = pd.Timestamp('now', tz=avail.tz)
             wait = (avail-now).total_seconds()
             if wait > 0:
-                self.__log.debug('wating %ds for first access [%s]', wait, time)
+                self.__log.info('wating %ds for first access [%s]', wait, time)
                 yield from asyncio.sleep(wait)
                 now = pd.Timestamp('now', tz=avail.tz)
 
             stat = None
             for avail, access in zip(avails, accesses):
                 if avail <= now:
-                    s = (yield from access.stat(time))
+                    s = (yield from access.stat(time, **tag))
                     if s:
                         stat = s
                         if stat[1].begin == pd.Timestamp(time, tz=avail.tz):
@@ -94,7 +94,7 @@ class Watch(Paramed, Unit):
                 self.__log.debug('waiting for all %d accesses [%s]',
                                  len(accesses), time)
                 done, pending = yield from asyncio.wait(
-                    [a.get(time) for a in accesses],
+                    [a.get(time, **tag) for a in accesses],
                     return_when=asyncio.FIRST_COMPLETED)
                 for p in pending:
                     p.cancel()
@@ -115,10 +115,12 @@ class Watch(Paramed, Unit):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
                                    time, loc.begin, loc.end)
 
-            stable = access.isstable(time)
+            stable = access.isstable(time, **tag)
 
             t = tag.add(access=access.name,
-                        stable=stable, **loc._asdict())
+                        stable=stable,
+                        time=pd.Timestamp(time, tz=loc.begin.tz),
+                        **loc._asdict())
             if start:
                 if loc.begin < pd.Timestamp(start, tz=loc.begin.tz):
                     t['skip_to_time'] = pd.Timestamp(start, tz=loc.begin.tz)

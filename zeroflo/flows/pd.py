@@ -79,7 +79,7 @@ class ToTable(Unit):
 
     @coroutine
     def __setup__(self):
-        self.offset = 0 
+        self.offset = 0
 
     @inport
     def process(self, data, tag):
@@ -108,6 +108,8 @@ class DumpTable(Unit):
     @inport
     def process(self, data, tag):
         """ port getting bytes data """
+        if data.empty:
+            return
         out = io.StringIO()
         data.to_csv(out, header=self.header, **self.opts)
         if self.header:
@@ -121,7 +123,7 @@ class Fill(Paramed, Unit):
     def fills(self, val={}):
         return val
 
-    @outport 
+    @outport
     def out(): pass
 
     @inport
@@ -137,7 +139,7 @@ class Convert(Paramed, Unit):
     def convs(self, val={}):
         return {col: conv if isinstance(conv, list) else [conv] for col, conv in val.items()}
 
-    @outport 
+    @outport
     def out(): pass
 
     @inport
@@ -282,10 +284,10 @@ class InferTypes(Unit):
 
         if len(conv):
             dn = pd.Series(conv, dn.index)
-            x = pd.Series(conv, index=dn.index).reindex(index=x.index, 
+            x = pd.Series(conv, index=dn.index).reindex(index=x.index,
                     fill_value=fill_dtypes.get(conv.dtype, np.nan))
 
-        if (pd.lib.is_integer_array(x.values) or 
+        if (pd.lib.is_integer_array(x.values) or
             pd.lib.is_float_array(x.values) and (dn.astype(int) == dn).all()):
 
             dates = dn[dn!=0]
@@ -348,5 +350,4 @@ class Filter(Unit):
     def process(self, data : pd.DataFrame, tag):
         for key,filt in self.filters.items():
             data = data[data[key].str.contains(filt)]
-            
         yield from data >> tag >> self.out

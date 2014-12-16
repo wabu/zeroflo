@@ -65,7 +65,7 @@ class Lines(Paramed, Unit):
     def seperator(self, val='\n'):
         return val
 
-    @outport 
+    @outport
     def out(): pass
 
     @coroutine
@@ -118,6 +118,10 @@ class Sort(Unit):
 
 class Filter(Paramed, Unit):
     @param
+    def tags(self, val={}):
+        return val
+
+    @param
     def pattern(self, value=None):
         if value is None:
             return
@@ -128,7 +132,8 @@ class Filter(Paramed, Unit):
 
     @inport
     def process(self, lines, tag):
-        yield from list(filter(self.pattern.search, lines)) >> tag >> self.out
+        filt = list(filter(self.pattern.search, lines))
+        yield from filt >> tag.add(**self.tags) >> self.out
 
 
 class Join(Paramed, Unit):

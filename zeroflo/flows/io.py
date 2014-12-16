@@ -1,5 +1,6 @@
 from ..core import asyncio, Unit, inport, outport, coroutine
 from ..ext import param, Paramed
+from .read.ressource import LocateByTime
 
 from pathlib import Path
 
@@ -84,7 +85,7 @@ class Reader(Paramed, Unit):
                     eof = file.at_eof()
                     if eof or warmup or size > chunksize:
                         break
-                
+
                 if warmup:
                     warmup -= size
                     if warmup < 0:
@@ -178,7 +179,9 @@ class PBzReader(Reader):
 @log
 class Writer(Paramed, Unit):
     @param
-    def filename(self, val):
+    def output(self, val):
+        if isinstance(val, str):
+            val = LocateByTime(val, width='30s')
         return val
 
     @param
@@ -187,17 +190,36 @@ class Writer(Paramed, Unit):
 
     @coroutine
     def __setup__(self):
-        self.f = yield from self.open(self.filename)
+        self.handle = None
+        self.last = None
 
     @coroutine
     def __teardown__(self):
-        self.f.close()
-        yield from self.f.drain()
+        yield from self.close()
+
+    def close(self):
+        if self.handle:
+            self.__log.info('flushing %s', self.last)
+            self.handle.close()
+            yield from self.handle.drain()
+            self.handle = None
+            self.last = None
 
     @inport
     def process(self, data, tag):
-        self.f.write(data+self.seperator)
-        yield from self.f.drain()
+        path = self.output.location(**tag).path
+        if path != self.last:
+            yield from self.close()
+            self.last = path
+
+        if data:
+            if not self.handle:
+                self.__log.info('opening %s for output', path)
+                self.last = path
+                self.handle = yield from self.open(path)
+
+            self.handle.write(data)
+            yield from self.handle.drain()
 
 
 class PBzWriter(Writer):
@@ -208,14 +230,13 @@ class PBzWriter(Writer):
     @coroutine
     def open(self, filename):
         pbzip2 = yield from asyncio.create_subprocess_shell(
-                'pbzip2 -c > {}'.format(filename),
-                stdin=asyncio.subprocess.PIPE, limit=self.limit)
+            'pbzip2 -c > {}'.format(filename),
+            stdin=asyncio.subprocess.PIPE, limit=self.limit)
 
         if not pbzip2.stdin._transport:
             logging.getLogger('asyncio').warning(
-                    "pipe has not transport, so we're fixing this manually")
+                "pipe has not transport, so we're fixing this manually")
             tr = pbzip2._transport.get_pipe_transport(0)
             pbzip2.stdin.set_transport(tr)
 
         return pbzip2.stdin
-

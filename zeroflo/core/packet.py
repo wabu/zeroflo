@@ -42,7 +42,7 @@ class Packet(namedtuple('Packet', 'data tag')):
     def __rshift__(self, port):
         return (yield from port.handle(port, self))
 
-    
+
 class Tag(dict):
     """
     tag with metainfo about the packet

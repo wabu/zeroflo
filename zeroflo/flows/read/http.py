@@ -11,6 +11,7 @@ coroutine = asyncio.coroutine
 
 from functools import wraps
 
+
 @log
 class HTTPConnection:
     """ aiohttp based http connection to server """
@@ -23,9 +24,9 @@ class HTTPConnection:
 
     @delayed
     def connector(self):
-        return (self.rqs.pop('connector', None) 
+        return (self.rqs.pop('connector', None)
                 or aiohttp.TCPConnector(loop=asyncio.get_event_loop(), **self.connect))
-    
+
     @cached
     def methods(self):
         return {}
@@ -68,8 +69,8 @@ class HTTPRessource(Ressource):
             return None
         h = r.headers
 
-        return Stats(self.path, self.path.endswith('/'), 
-                pd.Timestamp(h.get('last-modified', pd.NaT)), 
+        return Stats(self.path, self.path.endswith('/'),
+                pd.Timestamp(h.get('last-modified', pd.NaT)),
                 int(h.get('content-length', -1)))
 
     @coroutine
@@ -123,8 +124,8 @@ class HTTPRessource(Ressource):
             self.__log.debug('returning normaly with status %d %s (%d exspected)', r.status, r.reason, exspect)
 
         if error:
-            raise OSError(r.status, 
-                          '{} {} Error: {}'.format(r.status, error, r.reason), 
+            raise OSError(r.status,
+                          '{} {} Error: {}'.format(r.status, error, r.reason),
                           self.path)
 
 
