@@ -219,6 +219,8 @@ class Writer(Paramed, Unit):
                 self.handle = yield from self.open(path)
 
             self.handle.write(data)
+            if not data.endswith(self.seperator):
+                self.handle.write(self.seperator)
             yield from self.handle.drain()
 
 
