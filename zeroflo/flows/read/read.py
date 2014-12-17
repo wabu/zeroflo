@@ -41,7 +41,14 @@ class Watch(Paramed, Unit):
 
         if tag.reset:
             if tag.reset is True:
-                rel = pd.datetools.to_offset(orig)
+                try:
+                    rel = pd.datetools.to_offset(orig)
+                except ValueError:
+                    try:
+                        rel = pd.datetools.to_offset(tag.end)
+                    except ValueError:
+                        rel = None
+                rel = rel or pd.datetools.Second()
                 rel = pd.datetools.to_offset(rel.rule_code)
             else:
                 rel = pd.datetools.to_offset(tag.on)
