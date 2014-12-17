@@ -1,53 +1,68 @@
-from .idd import *
 from .topology import Topology
 from .control import Control
+from pyadds.annotate import cached
 
-import asyncio
-import aiozmq
-
+import logging
 from functools import wraps
-from contextlib import contextmanager
 
 from pyadds import spawn
 
 
-def setup_aiozmq():
-    asyncio.set_event_loop_policy(aiozmq.ZmqEventLoopPolicy())
-    pass
+def setup_logging():
+    logging.basicConfig(format='%(levelname)-7s %(message)s'
+                               '\n        \\\\ '
+                               '%(asctime)s | '
+                               '%(levelname).1s:%(levelno)2d | '
+                               '%(processName)s | %(name)s')
+    logging.getLogger().setLevel("INFO")
+
 
 class Context:
     __active__ = None
-    def __init__(self, name=None):
+    __previous__ = None
+
+    def __init__(self, name=None, setup=None):
+        if setup is None:
+            setup = setup_logging
+
         self.name = name
-        self.store['ctx'] = self.bound['ctx'] = self
-        self.store['tp'] = tp = Topology(name=name)
-        self.store['ctrl'] = ctrl = Control(ctx=self, tp=tp)
+        self.ctx = self
+        self.topology = Topology(name=name)
+        self.control = Control(ctx=self, tp=self.topology)
 
-    @cached
-    def store(self):
-        return {}
+        self.setups = [setup]
+        self.managed = {'ctx': self,
+                        'tp': self.topology,
+                        'ctrl': self.control}
+        if setup:
+            setup()
 
-    @cached
-    def bound(self):
-        return {}
+        self.activate(active='return')
 
-    @property
-    def topology(self):
-        try:
-            return self.bound['tp']
-        except KeyError:
-            raise ValueError("flow topology is only accessable inside setup() contex")
+    def activate(self, active='raise'):
+        if Context.__active__ and Context.__active__ != self:
+            if active == 'raise':
+                raise ValueError('another zeroflo context already active')
+            elif active == 'return':
+                return self
+            elif active == 'ignore':
+                pass
+            else:
+                raise TypeError("active argument should be 'raise' or 'ignore'")
+        Context.__active__ = self
+        return self
 
-    @property
-    def control(self):
-        try:
-            return self.bound['ctrl']
-        except KeyError:
-            raise ValueError("flow control is only accessable inside run() context")
+    def deactivate(self):
+        Context.__previous__ = Context.__active__
+        Context.__active__ = None
+
+    def _do_setups(self):
+        for setup in self.setups:
+            setup()
 
     def register(self, unit):
-        u = self.store['tp'].register(unit)
-        self.store['ctrl'].register(unit)
+        u = self.topology.register(unit)
+        self.control.register(unit)
         return u
 
     @cached
@@ -55,44 +70,29 @@ class Context:
         spawner = spawn.get_spawner('forkserver')
         return spawner
 
-    @contextmanager
-    def activate(self, key):
-        if Context.__active__ != None:
-            raise ValueError('another context is already active!')
-        try:
-            self.bound[key] = self.store[key]
-            Context.__active__ = self.bound
-            yield
-        finally:
-            self.bound.pop(key, None)
-            Context.__active__ = None
+    def __enter__(self):
+        return self.activate()
 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.deactivate()
 
-    @contextmanager
     def setup(self, setup=None):
-        if setup:
-            setup()
-        #setup_aiozmq()
+        self.setups.append(setup)
+        setup()
+        return self
 
-        #self.spawner.add_setup(setup_aiozmq)
-        self.spawner.add_setup(setup)
-
-        with self.activate('tp'):
-            yield
-
-    @contextmanager
     def run(self):
-        with self.activate('ctrl'):
-            yield
+        return self
 
 
 def get_active(key='ctx'):
-    if Context.__active__ is None:
-        raise ValueError("No current context, "
-                "use the `flo.context(...)` context manaanger before creating "
-                "flow units or pass a ctx to the unit constructor.")
+    if Context.__active__ is None and Context.__previous__ is None:
+        raise ValueError(
+            "No current context, "
+            "use the `flo.Context(...)` context manaanger before creating "
+            "flow units or pass a ctx to the unit constructor.")
     try:
-        return Context.__active__[key]
+        return (Context.__active__ or Context.__previous__).managed[key]
     except KeyError:
         raise ValueError("%s not inside current context" % key)
 
@@ -101,7 +101,7 @@ def with_active(key):
     def annotate(f):
         @wraps(f)
         def add_arg(*args, **kws):
-            if not key in kws:
+            if key not in kws:
                 try:
                     kws[key] = get_active(key)
                 except ValueError:
