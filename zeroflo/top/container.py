@@ -107,8 +107,8 @@ class RefContainer(RefersMixin, Container):
 
     def add(self, item, ref):
         i = super().add(item)
-        self._refers[ref].add(i)
-        self._refered[i].add(ref)
+        self._refers[ref].register(i)
+        self._refered[i].register(ref)
         return i
 
     def extend(self, items):
@@ -136,7 +136,7 @@ class AssocContainer(RefersMixin, Container):
     def add(self, item):
         i = super().add(item)
         for name, ref in item._asdict().items():
-            self._assocs[name][ref].add(i)
+            self._assocs[name][ref].register(i)
         return i
 
     def remove(self, item):
@@ -162,7 +162,7 @@ class SetsContainer(RefersMixin, Container):
         items = tuple(set(items))
         i = super().add(items)
         for ref in items:
-            self._refers[ref].add(i)
+            self._refers[ref].register(i)
         return i
 
     def lookup(self, items):
