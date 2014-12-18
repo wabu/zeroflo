@@ -15,6 +15,12 @@ def setup_logging():
                                '%(levelname).1s:%(levelno)2d | '
                                '%(processName)s | %(name)s')
     logging.getLogger().setLevel("INFO")
+    logging.getLogger('asyncio').setLevel("WARNING")
+
+
+class CallList(list):
+    def __call__(self, *args, **kws):
+        return [f(*args, **kws) for f in self]
 
 
 class Context:
@@ -22,6 +28,7 @@ class Context:
     __previous__ = None
 
     def __init__(self, name=None, setup=None):
+        self.setups = CallList()
         if setup is None:
             setup = setup_logging
 
@@ -29,8 +36,7 @@ class Context:
         self.ctx = self
         self.topology = Topology(name=name)
         self.control = Control(ctx=self, tp=self.topology)
-
-        self.setups = [setup]
+        self.setups.append(setup)
         self.managed = {'ctx': self,
                         'tp': self.topology,
                         'ctrl': self.control}
@@ -56,10 +62,6 @@ class Context:
         Context.__previous__ = Context.__active__
         Context.__active__ = None
 
-    def _do_setups(self):
-        for setup in self.setups:
-            setup()
-
     def register(self, unit):
         u = self.topology.register(unit)
         self.control.register(unit)
@@ -68,6 +70,7 @@ class Context:
     @cached
     def spawner(self):
         spawner = spawn.get_spawner('forkserver')
+        spawner.add_setup(self.setups)
         return spawner
 
     def __enter__(self):
