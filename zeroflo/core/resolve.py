@@ -18,14 +18,14 @@ class Defaults(dict):
         self.kws = kws
 
     def __getitem__(self, item):
-        try: 
+        try:
             return super().__getitem__(item)
         except KeyError:
             result = self[item] = self.mk(item, *self.args, **self.kws)
             return result
 
 
-@log(short='rsl', sign='##')
+@log
 class Resolver:
     __site__ = None
 
@@ -76,7 +76,7 @@ class Resolver:
             yield from self.close_chan(self.chans[link.kind])
 
 
-@log(short='rcv', sign='#<')
+@log
 class Receiver(Resolver):
     __site__ = 'target'
 
@@ -114,7 +114,7 @@ class Receiver(Resolver):
             yield from self.queue.put((None, None))
             yield from self.main
             self.main = None
-        
+
     @coroutine
     def loop(self, chan):
         self.__log.debug('looping %s: %s', self.endpoint, chan)
@@ -134,7 +134,7 @@ class Receiver(Resolver):
         get = self.queue.get
         done = self.queue.task_done
         prts = self.portmap
-        
+
         aquire = self.tracker.aquire
         release = self.tracker.release
 
@@ -153,7 +153,7 @@ class Deliver(Resolver):
     @coroutine
     def register(self, unit, link):
         chan = yield from super().register(unit, link)
-        
+
         port = link.source.of(unit)
         port.channels.append(chan)
         return chan

@@ -133,7 +133,7 @@ class Syncs:
     port = syncer('topology', 'space', 'unit', 'port')
 
 
-@log(short='prt', sign='<>')
+@log
 class Port:
     def __init__(self, unit, name, definition, **hints):
         self.unit = unit
@@ -224,7 +224,7 @@ class Port:
         return self
 
 
-@log(short='ins', sign='<<')
+@log
 class InPort(Port):
     __kind__ = 'target'
 
@@ -233,7 +233,7 @@ class InPort(Port):
         return self.method
 
 
-@log(short='out', sign='>>')
+@log
 class OutPort(Port):
     __kind__ = 'source'
 
@@ -322,7 +322,7 @@ class CallHelper(Unit):
         yield from load >> tag >> self.out
 
 
-@log(short='yld', sign='>|')
+@log
 class YieldHelper(Unit):
     @coroutine
     def __setup__(self):

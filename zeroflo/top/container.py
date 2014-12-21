@@ -1,6 +1,20 @@
 from functools import reduce
 from collections import defaultdict
 
+class Ref(tuple):
+    def __new__(cls, name, id):
+        return super().__new__(cls, (name,id))
+
+    @property
+    def name(self):
+        return self[0]
+
+    @property
+    def id(self):
+        return self[1]
+
+    def __str__(self):
+        return
 
 class Container:
     """
