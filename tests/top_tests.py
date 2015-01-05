@@ -2,12 +2,41 @@ __author__ = 'dwae'
 
 import unittest
 from zeroflo.top.refer import Container
+from zeroflo.top.refs import IdGen, ReusingGen
+
+
+class GenTestCase(unittest.TestCase):
+    def do_it(self, gen, a=4, b=2, c=4):
+        ids = set()
+        seen = set()
+        for i in range(a):
+            id = gen.next()
+            self.assertNotIn(id, ids)
+            ids.add(id)
+            seen.add(id)
+
+        for i in range(b):
+            id = ids.pop()
+            gen.free(id)
+
+        for i in range(c):
+            id = gen.next()
+            self.assertNotIn(id, ids)
+            ids.add(id)
+            seen.add(id)
+        return seen
+
+    def test_simple_gen(self):
+        seen = self.do_it(IdGen())
+        self.assertEquals(len(seen), 8)
+
+    def test_reusing_gen(self):
+        seen = self.do_it(ReusingGen())
+        self.assertEquals(len(seen), 6)
+
 
 class ContainerTestCase(unittest.TestCase):
     def test_unique(self):
-        """
-        equal items should give same refs
-        """
         cont = Container()
 
         r1 = cont.register('a')
@@ -20,9 +49,6 @@ class ContainerTestCase(unittest.TestCase):
         self.assertEqual(r1, r3)
 
     def test_differ(self):
-        """
-        different items should give back different refs
-        """
         cont = Container()
 
         r1 = cont.register('a')
@@ -35,9 +61,6 @@ class ContainerTestCase(unittest.TestCase):
         self.assertNotEqual(r2, r3)
 
     def test_lookup(self):
-        """
-        one should be able to lookup refs again
-        """
         cont = Container()
 
         r1 = cont.register('a')
@@ -52,9 +75,6 @@ class ContainerTestCase(unittest.TestCase):
         self.assertEqual(i1, 'a')
 
     def test_remove(self):
-        """
-        one should be able to remove objects
-        """
         cont = Container()
         r1 = cont.register('a')
         r2 = cont.remove('a')
@@ -63,15 +83,45 @@ class ContainerTestCase(unittest.TestCase):
         self.assertEqual(r1, r2)
 
         r3 = cont.register('a')
-        self.assertIsNot(r1, r3)
+        self.assertNotEqual(r1, r3)
 
         del cont[r3]
         self.assertRaises(KeyError, cont.lookup, 'a')
 
+    def test_many(self):
+        cont = Container()
+        steps = [+1, +2, +3, +4, -2, -1, +2, +5, -4, +2, +3, +1, -2, +1, -5]
+
+        active = set()
+        ids = set()
+
+        for step in steps:
+            if step > 0:
+                r = cont.register(step)
+                if step in active:
+                    self.assertIn(r.id, ids)
+                else:
+                    self.assertNotIn(r.id, ids)
+                    ids.add(r.id)
+                    active.add(step)
+            else:
+                r = cont.remove(-step)
+                active.remove(-step)
+                ids.remove(r.id)
+
+            self.assertEqual(set(cont.values()), set(active))
+            self.assertEqual(set(r.id for r in cont.refs()), set(ids))
+
+    def test_mulit(self):
+        a = Container()
+        b = Container()
+
+        ra = a.register('a')
+        rb = b.register('a')
+
+        self.assertNotEqual(ra, rb)
+
     def test_container(self):
-        """
-        container should have container behaviour
-        """
         cont = Container()
         self.assertEquals(len(cont), 0)
 
@@ -85,7 +135,7 @@ class ContainerTestCase(unittest.TestCase):
         self.assertTrue('b' in cont)
         self.assertFalse('c' in cont)
 
-        self.assertEqual(set(cont), {'a','b'})
+        self.assertEqual(set(cont), {'a', 'b'})
         self.assertEqual(cont[r1], 'a')
         self.assertEqual(cont[r2], 'b')
 
