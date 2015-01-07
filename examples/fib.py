@@ -23,7 +23,7 @@ Here's the flow diagram showing the wireing:
    .--------------.  |
   :              _.` |
   `-> a]add[out =----|-> ins]print
-  .-> b]         `.  |   
+  .-> b]         `.  |
   :                `-|-> ins]lag[out -.
   :                  |                :
   `------------------|----------------`
@@ -118,6 +118,6 @@ if __name__ == "__main__":
         add.a(0)
         add.b(0)
         add.b(1)
-        
+
         prt.join()
 

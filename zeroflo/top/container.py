@@ -1,232 +1,283 @@
-from functools import reduce
 from collections import defaultdict
+from functools import reduce
 
 
-class Ref(tuple):
-    def __new__(cls, name, id):
-        return super().__new__(cls, (name, id))
+class IdGen:
+    def __init__(self):
+        self.next_id = 0
 
-    @property
-    def name(self):
-        return self[0]
+    def add(self, id):
+        if id < self.next_id:
+            raise ValueError('conflicting id')
+        self.next_id = id + 1
 
+    def next(self):
+        id = self.next_id
+        self.next_id += 1
+        return id
+
+    def free(self, id):
+        pass
+
+
+class ReusingGen(IdGen):
+    def __init__(self):
+        super().__init__()
+        self.free_ids = []
+
+    def add(self, id):
+        if id in self.free_ids:
+            self.free_ids.remove(id)
+        else:
+            super().add(id)
+
+    def next(self):
+        if self.free_ids:
+            return self.free_ids.pop(0)
+        else:
+            return super().next()
+
+    def free(self, id):
+        self.free_ids.append(id)
+
+
+class RefId(int):
     @property
     def id(self):
-        return self[1]
+        return int(self)
+
+    def __bool__(self):
+        return True
+
+    def __eq__(self, other):
+        if not self.cid == other.cid:
+            return False
+        return super().__eq__(other)
+
+    def __ne__(self, other):
+        if not self.cid != other.cid:
+            return True
+        return super().__eq__(other)
+
+    def __hash__(self):
+        return self ^ hash(self.cid << 16)
 
     def __str__(self):
-        return '*{}'.format(self.name)
+        return '*{}-{}'.format(self.name, super().__str__())
 
-    def __repr__(self):
-        return '*{}-{}'.format(self.name, self.id)
+    __repr__ = __str__
 
 
 class Container:
-    """
-    containter class creating static element ids sparsly
+    def __init__(self, name=None):
+        self.RefId = type('RefId{:X}'.format(id(self)), (RefId,),
+                          {'name': name or 'cnt', 'cid': id(self)})
+        self._by_id = {}
+        self._by_item = {}
+        self._ids = ReusingGen()
 
-    >>> cnt = Container(['a','b','c'])
-    >>> cnt
-        [0: 'a',
-         1: 'b',
-         2: 'c']
-    >>> cnt[2]
-        'c'
-    >>> cnt.lookup('a')
-        0
-    >>> cnt.remove('b')
-        1
-    >>> cnt
-        [0: 'a',
-         2: 'c']
-    >>> cnt.add('d')
-        1
-    >>> cnt
-        [0: 'a',
-         1: 'd',
-         2: 'c']
-    >>> cnt.add('d')
-        1
-    """
-    def __init__(self, items=[]):
-        self._free = []
-        self._items = {}
-        self._nums = {}
+    def _key(self, item):
+        return item
 
-        self.extend(items)
+    def _insert(self, id, key, item, *args):
+        self._by_id[id] = item
+        self._by_item[key] = id
 
-    def add(self, item):
+    def _remove(self, id=None, item=None):
+        assert (item or id) is not None, 'either item or id has to be given'
+        if not id:
+            id = self._by_item[item]
+        if not item:
+            id = int(id)
+            item = self._by_id[id]
+
+        self._ids.free(id)
+        del self._by_item[item]
+        del self._by_id[id]
+        return id, item
+
+    def add(self, item, *args):
+        """
+        adds in item to the container and returns a ref-id
+        :param item: item to add
+        :return: int that is unique to the container for the item
+        """
+        key = self._key(item)
         try:
-            return self._nums[item]
+            id = self._by_item[key]
         except KeyError:
-            if self._free:
-                i = self._free.pop()
-            else:
-                i = len(self._nums)
-            self._nums[item] = i
-            self._items[i] = item
-            return i
+            id = self._ids.next()
+            self._insert(id, key, item, *args)
+        return self.RefId(id)
 
-    def extend(self, items):
-        for i in items:
-            self.add(i)
-
-    def lookup(self, item):
-        return self._nums[item]
+    def __setitem__(self, id, item):
+        id = int(id)
+        args = []
+        if isinstance(item, slice):
+            item = slice.start
+            args.append(item.stop)
+        try:
+            if item != self._by_id[id]:
+                raise ValueError('conflicting items')
+        except KeyError:
+            key = self._key(item)
+            self._ids.add(id)
+            self._insert(id, key, item, *args)
 
     def remove(self, item):
-        i = self._nums.pop(item)
-        self._items.pop(i)
-        self._free.append(i)
-        return i
+        """
+        removes an item from the container
+        :param item: item to be removed
+        :return: id of the item that is removed
+        :raises KeyError: item not inside the container
+        """
+        id, _ = self._remove(item=item)
+        return self.RefId(id)
 
-    def __getitem__(self, i):
-        return self._items[i]
+    def index(self, item):
+        """
+        :param item: item in the container
+        :return: ref-id of the item
+        :raises KeyError: item not inside the container
+        """
+        return self.RefId(self._by_item[item])
 
-    def __delitem__(self, i):
-        item = self[i]
-        self.remove(item)
+    def __getitem__(self, id):
+        """
+        get item with a given id
+        :param id: int or ref-id for an item
+        :return: item for id
+        :raises KeyError: id is not known
+        """
+        return self._by_id[int(id)]
+
+    def __delitem__(self, id):
+        """
+        remove an item with a given id
+        :param id: int or ref-id for an item
+        :return: item for id
+        :raises KeyError: id is not known
+        """
+        _, item = self._remove(id=id)
+        return item
 
     def __iter__(self):
-        return map(lambda x: x[1], self.items())
+        return iter(self.values())
 
-    def items(self):
-        return sorted(self._items.items())
+    def __contains__(self, item):
+        return self._key(item) in self._by_item
 
-    def __str__(self):
-        return '[{}]'.format(', '.join(map(str, self)))
+    def __len__(self):
+        return len(self._by_id)
 
-    def __repr__(self):
-        its = ('{}: {}'.format(*it) for it in self.items())
-        return '[{}]'.format('\n '.join(its))
+    def keys(self):
+        return map(self.RefId, self._by_id.keys())
+
+    def values(self):
+        return self._by_id.values()
 
 
 class RefersMixin:
-    def _remove_ref(self, ref, i, refdct=None):
+    def _remove_ref(self, ref, id, refdct=None):
+        """remove an id for an ref entry"""
         if refdct is None:
             refdct = self._refers
 
-        refdct[ref].remove(i)
+        refdct[ref].remove(id)
         if not refdct[ref]:
             refdct.pop(ref)
-        return i
 
-    def _reduce_refs(self, refsets):
-        return reduce(set.intersection, refsets)
+    def dismiss(self, *args, **kws):
+        for id in list(self._refered(*args, **kws)):
+            del self[self.RefId(id)]
+
+    def refered_keys(self, *args, **kws):
+        return [self.RefId(id) for id in self._refered(*args, **kws)]
+
+    def refered_values(self, *args, **kws):
+        return [self[id] for id in self._refered(*args, **kws)]
 
 
-class RefContainer(RefersMixin, Container):
-    """
-    containter with elements refered by an outside reference
-    """
-    def __init__(self, items={}):
+class ReferedContainer(RefersMixin, Container):
+    def __init__(self, name=None):
         self._refers = defaultdict(set)
-        self._refered = defaultdict(set)
-        super().__init__(items=items)
+        self._referer = dict()
+        super().__init__(name=name or 'refed')
 
-    def add(self, item, ref):
-        i = super().add(item)
-        self._refers[ref].register(i)
-        self._refered[i].register(ref)
-        return i
+    def _insert(self, id, key, item, ref=None):
+        super()._insert(id, key, item)
+        self._refers[ref].add(id)
+        self._referer[id] = ref
 
-    def extend(self, items):
-        for item, ref in items.items():
-            self.add(item, ref)
+    def _remove(self, id=None, item=None):
+        id, item = super()._remove(id, item)
+        self._remove_ref(self._referer[id], id)
+        return id, item
 
-    def remove(self, item):
-        i = super().remove(item)
-        for ref in self._refered[i]:
-            self._remove_ref(ref, i)
-        return i
-
-    def refers(self, ref):
-        return self._reduce_refs([self._refers[ref]])
+    def _refered(self, ref):
+        return self._refers[ref]
 
 
 class AssocContainer(RefersMixin, Container):
-    """
-    containter where elements are namedtuples with components refering to tuple
-    """
-    def __init__(self, items=[]):
+    def __init__(self, name=None):
         self._assocs = defaultdict(lambda: defaultdict(set))
-        super().__init__(items=items)
+        super().__init__(name=name or 'assoc')
 
-    def add(self, item):
-        i = super().add(item)
+    def _insert(self, id, key, item):
+        super()._insert(id, key, item)
         for name, ref in item._asdict().items():
-            self._assocs[name][ref].register(i)
-        return i
+            self._assocs[name][ref].add(id)
 
-    def remove(self, item):
-        i = super().remove(item)
+    def _remove(self, id=None, item=None):
+        id, item = super()._remove(id, item)
         for name, ref in item._asdict().items():
-            self._remove_ref(ref, i, refdct=self._assocs[name])
-        return i
+            self._remove_ref(ref, id, refdct=self._assocs[name])
+        return id, item
 
-    def refers(self, **refs):
-        return self._reduce_refs(self._assocs[name].get(val, set())
-                                 for name, val in refs.items())
+    def _refered(self, **refs):
+        rs = (self._assocs[name].get(val, set()) for name, val in refs.items())
+        return reduce(set.intersection, rs)
 
 
 class SetsContainer(RefersMixin, Container):
-    """
-    containter where items of element sets refer to there containing sets
-    """
-    def __init__(self, items=[]):
+    def __init__(self, name=None):
         self._refers = defaultdict(set)
-        super().__init__(items=items)
+        super().__init__(name=name or 'sets')
 
-    def add(self, items):
-        items = tuple(set(items))
-        i = super().add(items)
-        for ref in items:
-            self._refers[ref].register(i)
-        return i
+    def _key(self, item):
+        return tuple(set(item))
 
-    def lookup(self, items):
-        items = tuple(set(items))
-        return super().lookup(items)
+    def _insert(self, id, key, item):
+        super()._insert(id, key, item)
+        for elem in item:
+            self._refers[elem].add(id)
 
-    def __getitem__(self, i):
-        return set(super().__getitem__(i))
+    def _remove(self, id=None, item=None):
+        if item is not None:
+            item = tuple(set(item))
+        id, item = super()._remove(id, item)
+        for elem in item:
+            self._remove_ref(elem, id)
+        return id, item
 
-    def remove(self, items):
-        items = tuple(set(items))
-        i = super().remove(items)
-        for ref in items:
-            self._remove_ref(ref, i)
-        return i
-
-    def refers(self, *items):
-        return self._reduce_refs(self._refers[ref] for ref in items)
-
-    def dismiss(self, item):
-        for i in self.refers(item):
-            items = self[i]
-            self.remove(items)
-            items.remove(item)
-            if items:
-                j = self.add(items)
-                assert i == j
-            yield i, items
+    def _refered(self, *items):
+        rs = (self._refers[elem] for elem in items)
+        return reduce(set.intersection, rs)
 
 
 class GroupedContainer(SetsContainer):
     def join(self, *items):
         new = set(items)
-        grps = [grp for grp in self
-                if new.intersection(grp)]
+        grps = [grp for grp in self if new.intersection(grp)]
 
         if len(grps) > 1:
-            raise IndexError('items of different groups cannot be joined')
+            raise IndexError('items of diefferent groups cannot be joined')
         elif grps:
             grp, = grps
             i = self.remove(grp)
-            j = self.add(new.union(grp))
-            assert i == j
+            self[i] = new.union(grp)
         else:
-            self.add(items)
+            self.add(new)
 
     def part(self, *items):
         new = set(items)
