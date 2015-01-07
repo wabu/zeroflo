@@ -1,5 +1,8 @@
 import pandas as pd
 
+from zeroflo import param, coroutine, inport
+
+
 class H5:
     @param
     def h5file(self, h5file):
@@ -15,7 +18,8 @@ class H5:
 
     @coroutine
     def __setup__(self):
-        self.st = pd.HdfStore(h5file, complib=self.complib, complevel=self.complevel)
+        self.st = pd.HdfStore(self.h5file,
+                              complib=self.complib, complevel=self.complevel)
 
     @inport
     def process(self, data, tag):

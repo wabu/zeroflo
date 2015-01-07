@@ -1,5 +1,5 @@
 from .container import (Container,
-                        RefContainer,
+                        ReferedContainer,
                         AssocContainer,
                         SetsContainer,
                         GroupedContainer)
@@ -13,8 +13,8 @@ class Topology:
     def __init__(self):
         self.units = Container()
 
-        self.tgtports = RefContainer()
-        self.srcports = RefContainer()
+        self.tgtports = ReferedContainer()
+        self.srcports = ReferedContainer()
 
         self.links = AssocContainer()
 
@@ -25,50 +25,49 @@ class Topology:
         return self.units.add(unit)
 
     def unregister(self, unit):
-        uid = self.units.lookup(unit)
+        uid = self.units.index(unit)
 
-        for sid in self.srcports.refers(uid):
-            for link in self.links.refers(sid=sid):
+        for sid in self.srcports.refered_keys(uid):
+            for link in self.links.refered_values(sid=sid):
                 self.unlink(*link)
             self.srcports.remove(sid)
 
-        for tid in self.tgtports.refers(uid):
-            for link in self.links.refers(tid=tid):
+        for tid in self.tgtports.refered_keys(uid):
+            for link in self.links.refered_values(tid=tid):
                 self.unlink(*link)
             self.tgtports.remove(tid)
 
         # TODO broadcast as we use container methods
-        self.bundels.dismiss(uid)
+        self.bundles.dismiss(uid)
         self.spaces.dismiss(uid)
 
         self.units.remove(unit)
 
     def link(self, source, target):
-        sid = self.srcports.add(source, ref=self.units.lookup(source.unit))
-        tid = self.tgtports.add(target, ref=self.units.lookup(target.unit))
+        sid = self.srcports.add(source, ref=self.units.index(source.unit))
+        tid = self.tgtports.add(target, ref=self.units.index(target.unit))
         link = Link(sid, tid)
-
-        return self.links.add(link)
+        self.links.add(link)
+        return link
 
     def unlink(self, source, target):
-        sid = self.srcports.add(source, ref=self.units.lookup(source.unit))
-        tid = self.tgtports.add(target, ref=self.units.lookup(target.unit))
+        sid = self.srcports.add(source, ref=self.units.index(source.unit))
+        tid = self.tgtports.add(target, ref=self.units.index(target.unit))
         link = Link(sid, tid)
-
         self.links.remove(link)
 
     def bundle(self, units):
-        uids = {self.units.lookup(u) for u in units}
+        uids = {self.units.index(u) for u in units}
         return self.bundles.add(uids)
 
     def unbundle(self, units):
-        uids = {self.units.lookup(u) for u in units}
+        uids = {self.units.index(u) for u in units}
         self.bundles.remove(uids)
 
     def join(self, *units):
-        uids = {self.units.lookup(u) for u in units}
+        uids = {self.units.index(u) for u in units}
         self.spaces.join(*uids)
 
     def part(self, *units):
-        uids = {self.units.lookup(u) for u in units}
+        uids = {self.units.index(u) for u in units}
         self.spaces.part(*uids)

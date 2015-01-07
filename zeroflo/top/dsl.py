@@ -1,5 +1,4 @@
 from pyadds.meta import ops
-from pyadds import annotate as an
 
 
 def flatten(its):
@@ -18,20 +17,23 @@ class FloDSL:
         self.targets = targets
 
     @property
+    def dsl(self):
+        return self
+
+    @property
     def left(self):
         return self.units[0]
 
     @property
     def right(self):
-        return self.units[0]
+        return self.units[-1]
 
     @classmethod
-    def join(cls, units):
+    def join(cls, items):
         return cls(flatten(i.dsl.units for i in items),
                    sources=flatten(i.dsl.sources for i in items),
                    targets=flatten(i.dsl.targets for i in items))
 
-    
     def __add__(self, other):
         return type(self)(self.units + other.units,
                           targets=self.targets,
@@ -86,3 +88,32 @@ class FloDSL:
 
 
 DSLMixin = ops.autowraped_ops(FloDSL, by='dsl')
+
+
+class UnitDSL(DSLMixin):
+    def __init__(self, model):
+        self.model = model
+
+    @property
+    def dsl(self):
+        return FloDSL(units=(self,), model=self.model)
+
+
+class SourceDSL(DSLMixin):
+    def __init__(self, model):
+        self.model = model
+
+    @property
+    def dsl(self):
+        return FloDSL(units=(self.unit,), sources={self}, targets={},
+                      model=self.model)
+
+
+class TargetDSL(DSLMixin):
+    def __init__(self, model):
+        self.model = model
+
+    @property
+    def dsl(self):
+        return FloDSL(units=(self.unit,), sources={}, targets={self},
+                      model=self.model)

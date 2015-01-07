@@ -167,7 +167,7 @@ class ContainerTestCase(unittest.TestCase):
 
         cont[r1.id] = self.a
         self.assertEqual(r1, cont.index(self.a))
-        self.assertRaises(ValueError, cont.__setitem__, r2.id, self.d)
+        self.assertRaises(IndexError, cont.__setitem__, r2.id, self.d)
 
 
 class ReferedContainerTestCase(ContainerTestCase):
@@ -245,12 +245,16 @@ class GroupsTestCase(SetsContainerTestCase):
         cont.part('c', 'e')
         cont.join('f', 'g')
         cont.part('h', 'b')
+        cont.part('d', 'g')
 
+        self.assertEqual(len(cont), 4)
         self.assertIn({'a', 'b', 'c'}, cont)
         self.assertIn({'d', 'e'}, cont)
         self.assertIn({'f', 'g'}, cont)
         self.assertIn({'h'}, cont)
 
+        self.assertRaises(IndexError, cont.join, 'b', 'e')
+        self.assertRaises(IndexError, cont.part, 'a', 'c')
 
 if __name__ == '__main__':
     unittest.main()
