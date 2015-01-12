@@ -47,7 +47,7 @@ def test_compat():
 
 
 def test_simple():
-    pytest.skip()
+    pytest.skip('TODO new flo')
     flow = Range() >> Cum()
 
     items = list(flow.process(5))
@@ -55,7 +55,7 @@ def test_simple():
 
 
 def test_opts():
-    pytest.skip()
+    pytest.skip('TODO new flo')
     flow = Range() >> Cum()
     flow.range & flow.cum
 
@@ -64,7 +64,7 @@ def test_opts():
 
 
 def test_anonymous():
-    pytest.skip()
+    pytest.skip('TODO new flo')
     flow = Range() >> (lambda x: x*2) >> Cum()
 
     items = list(flow.process(5))
@@ -72,7 +72,7 @@ def test_anonymous():
 
 
 def test_named():
-    pytest.skip()
+    pytest.skip('TODO new flo')
     flow = Range(name='rng') >> Cum(name='sum')
     flow.rng | flow.sum
 
@@ -81,7 +81,7 @@ def test_named():
 
 
 def test_varz():
-    pytest.skip()
+    pytest.skip('TODO new flo')
     flow = rng, cum = Range() >> Cum()
     rng & cum
 

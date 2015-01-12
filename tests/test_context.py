@@ -4,11 +4,6 @@ import pathlib
 import gc
 
 
-@context.with_ctx
-def get_context(ctx):
-    return ctx
-
-
 def test_root():
     ctx = context.Context(name='testflo')
 
@@ -28,9 +23,9 @@ def test_default_ctx():
     def get_other(ctx):
         return ctx
 
-    ctx = get_context()
+    ctx = context.get_context()
     assert isinstance(ctx, context.Context)
-    assert ctx is get_context()
+    assert ctx is context.get_context()
     assert ctx is get_other()
 
     assert pathlib.Path(ctx.root.name).is_dir()
@@ -39,17 +34,20 @@ def test_default_ctx():
 def test_bind():
     ctx = context.Context('aname')
 
-    other = get_context()
+    other = context.get_context()
     assert other is not ctx
     assert 'aname' not in other.root.name
+    assert context.get_context(ctx=ctx) is ctx
 
     with ctx.bind():
-        assert get_context() is ctx
+        assert context.get_context() is ctx
         assert 'aname' in ctx.root.name
+        assert context.get_context(ctx=ctx) is ctx
 
-    other = get_context()
+    other = context.get_context()
     assert other is not ctx
     assert 'aname' not in other.root.name
+    assert context.get_context(ctx=ctx) is ctx
 
 
 def test_attrs():

@@ -47,3 +47,8 @@ def with_ctx(f):
         finally:
             pass
     return injecting
+
+
+@with_ctx
+def get_context(ctx):
+    return ctx

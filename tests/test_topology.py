@@ -135,6 +135,15 @@ def test_simple():
     u3 = Unit(top, 'u3')
     u4 = Unit(top, 'u4')
 
+    assert (u1 + u2).u1 == u1
+    assert (u1 / u2).u2 == u2
+
+    with pytest.raises(AttributeError):
+        (u1 / u2).u3
+
+    with pytest.raises(AttributeError):
+        (u1 + Unit(top, 'u1')).u1
+
     assert u1.dsl.left == u1
     assert u2.dsl.right == u2
 

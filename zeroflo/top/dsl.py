@@ -20,6 +20,15 @@ class FloDSL:
     def right(self):
         return self.units[-1]
 
+    def __getattr__(self, name):
+        names = {name, name.replace('_', '-')}
+        sel = {unit for unit in self.units if unit.name in names}
+        if not sel:
+            raise AttributeError('no unit named {} found'.format(name))
+        if len(sel) > 1:
+            raise AttributeError('unit name {} is not unique'.format(name))
+        return next(iter(sel))
+
     @ops.opsame
     def __add__(self, other):
         return type(self)(self.units + other.units,
