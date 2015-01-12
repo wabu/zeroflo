@@ -1,16 +1,16 @@
-import unittest
+import pytest
 
 from zeroflo.top import container
 from collections import namedtuple
 
 
-class GenTestCase(unittest.TestCase):
+class TestGen:
     def do_it(self, gen, a=4, b=2, c=4):
         ids = set()
         seen = set()
         for i in range(a):
             id = gen.next()
-            self.assertNotIn(id, ids)
+            assert id not in ids
             ids.add(id)
             seen.add(id)
 
@@ -20,25 +20,25 @@ class GenTestCase(unittest.TestCase):
 
         for i in range(c):
             id = gen.next()
-            self.assertNotIn(id, ids)
+            assert id not in ids
             ids.add(id)
             seen.add(id)
         return seen
 
     def test_simple_gen(self):
         seen = self.do_it(container.IdGen())
-        self.assertEquals(len(seen), 8)
+        assert len(seen) == 8
 
     def test_reusing_gen(self):
         seen = self.do_it(container.ReusingGen())
-        self.assertEquals(len(seen), 6)
+        assert len(seen) == 6
 
 
-class ContainerTestCase(unittest.TestCase):
+class TestContainer:
     elems = ['a', 'b', 'c', 'd', 'e']
     Cont = container.Container
 
-    def setUp(self):
+    def setup(self):
         self.a, self.b, self.c, self.d, self.e = self.elems
 
     def test_unique(self):
@@ -46,51 +46,64 @@ class ContainerTestCase(unittest.TestCase):
 
         r1 = cont.add(self.a)
         r2 = cont.add(self.a)
-        self.assertEqual(r1, r2)
+        assert r1 == r2
 
         cont.add(self.b)
         cont.add(self.c)
         r3 = cont.add(self.a)
-        self.assertEqual(r1, r3)
+        assert r1 == r3
+
+    def test_strs(self):
+        cont = self.Cont('test')
+
+        r = cont.add(self.a)
+        assert "test" in str(r)
+        assert str(r.id) in str(r)
+
+        cont.add(self.b)
+        assert str(self.a) in str(cont)
+        assert str(self.b) in str(cont)
 
     def test_differ(self):
         cont = self.Cont()
         r1 = cont.add(self.a)
         r2 = cont.add(self.b)
-        self.assertNotEqual(r1, r2)
+        assert r1 != r2
 
         cont.add(self.a)
         r3 = cont.add(self.c)
-        self.assertNotEqual(r1, r3)
-        self.assertNotEqual(r2, r3)
+        assert r1 != r3
+        assert r2 != r3
 
     def test_lookup(self):
         cont = self.Cont()
 
         r1 = cont.add(self.a)
         i1 = cont[r1]
-        self.assertEqual(i1, self.a)
+        assert i1 == self.a
 
         r2 = cont.add(self.b)
         i2 = cont[r2]
         i1 = cont[r1]
 
-        self.assertEqual(i2, self.b)
-        self.assertEqual(i1, self.a)
+        assert i2 == self.b
+        assert i1 == self.a
 
     def test_remove(self):
         cont = self.Cont()
         r1 = cont.add(self.a)
         r2 = cont.remove(self.a)
 
-        self.assertRaises(KeyError, cont.index, self.a)
-        self.assertEqual(r1, r2)
+        with pytest.raises(KeyError):
+            cont.index(self.a)
+        assert r1 == r2
 
         r3 = cont.add(self.a)
-        self.assertNotEqual(r1, r3)
+        assert r1 == r3
 
         del cont[r3]
-        self.assertRaises(KeyError, cont.index, self.a)
+        with pytest.raises(KeyError):
+            cont.index(self.a)
 
     def test_many(self):
         cont = self.Cont()
@@ -104,9 +117,9 @@ class ContainerTestCase(unittest.TestCase):
                 elem = self.elems[step-1]
                 r = cont.add(elem)
                 if elem in active:
-                    self.assertIn(r, ids)
+                    assert r in ids
                 else:
-                    self.assertNotIn(r, ids)
+                    assert r not in ids
                     ids.add(r)
                     active.add(elem)
             else:
@@ -115,8 +128,8 @@ class ContainerTestCase(unittest.TestCase):
                 active.remove(elem)
                 ids.remove(r)
 
-            self.assertEqual(set(cont.values()), set(active))
-            self.assertEqual(set(cont.keys()), set(ids))
+            assert set(cont.values()) == set(active)
+            assert set(cont.keys()) == set(ids)
 
     def test_mulit(self):
         a = self.Cont()
@@ -125,34 +138,35 @@ class ContainerTestCase(unittest.TestCase):
         ra = a.add(self.a)
         rb = b.add(self.a)
 
-        self.assertNotEqual(ra, rb)
+        assert ra != rb
+        assert not ra == rb
 
     def test_container(self):
         cont = self.Cont()
-        self.assertEquals(len(cont), 0)
+        assert len(cont) == 0
 
         r1 = cont.add(self.a)
-        self.assertEquals(len(cont), 1)
+        assert len(cont) == 1
 
         r2 = cont.add(self.b)
-        self.assertEquals(len(cont), 2)
+        assert len(cont) == 2
 
-        self.assertTrue(self.a in cont)
-        self.assertTrue(self.b in cont)
-        self.assertFalse(self.c in cont)
+        assert self.a in cont
+        assert self.b in cont
+        assert self.c not in cont
 
-        self.assertEqual(set(cont), {self.a, self.b})
-        self.assertEqual(cont[r1], self.a)
-        self.assertEqual(cont[r2], self.b)
+        assert set(cont) == {self.a, self.b}
+        assert cont[r1] == self.a
+        assert cont[r2] == self.b
 
         cont.add(self.a)
-        self.assertEquals(len(cont), 2)
+        assert len(cont) == 2
 
         cont.remove(self.a)
-        self.assertEquals(len(cont), 1)
+        assert len(cont) == 1
 
         cont.add(self.c)
-        self.assertEquals(len(cont), 2)
+        assert len(cont) == 2
 
     def test_setitem(self):
         cont = self.Cont()
@@ -161,16 +175,23 @@ class ContainerTestCase(unittest.TestCase):
 
         cont[4] = self.c
 
-        self.assertIn(self.c, cont)
-        self.assertEqual(cont[4], self.c)
-        self.assertEqual(cont.index(self.c).id, 4)
+        assert self.c in cont
+        assert cont[4] == self.c
+        assert cont.index(self.c).id == 4
 
         cont[r1.id] = self.a
-        self.assertEqual(r1, cont.index(self.a))
-        self.assertRaises(IndexError, cont.__setitem__, r2.id, self.d)
+        assert r1 == cont.index(self.a)
+
+        with pytest.raises(IndexError):
+            # set other value to same id
+            cont[r2.id] = self.d
+
+        with pytest.raises(IndexError):
+            # set same value to other id
+            cont[5] = self.b
 
 
-class ReferedContainerTestCase(ContainerTestCase):
+class TestReferedContainer(TestContainer):
     Cont = container.ReferedContainer
 
     def test_container(self):
@@ -179,23 +200,27 @@ class ReferedContainerTestCase(ContainerTestCase):
         a = cont.add(self.a, 0)
         b = cont.add(self.b, 0)
 
-        c = cont.add(self.c, 1)
+        cont[3:1] = self.c
+        c = cont.index(self.c)
 
-        self.assertEquals(set(cont.refered_values(0)), {self.a, self.b})
-        self.assertEquals(set(cont.refered_values(1)), {self.c})
+        assert set(cont.refered_values(0)) == {self.a, self.b}
+        assert set(cont.refered_values(1)) == {self.c}
 
-        self.assertEquals(set(cont.refered_keys(0)), {a, b})
-        self.assertEquals(set(cont.refered_keys(1)), {c})
+        assert set(cont.refered_keys(0)) == {a, b}
+        assert set(cont.refered_keys(1)) == {c}
+
+        assert set(cont.refered_items(0)) == {(a, self.a), (b, self.b)}
+        assert set(cont.refered_items(1)) == {(c, self.c)}
 
         cont.dismiss(0)
 
-        self.assertEqual(set(cont), {self.c})
+        assert set(cont) == {self.c}
 
 
 Cons = namedtuple('Cons', 'car, cdr')
 
 
-class AssocContainerTestCase(ContainerTestCase):
+class TestAssocContainer:
     Cont = container.AssocContainer
     elems = [Cons('a', 'b'), Cons('b', 'c'), Cons('d', 'e'),
              Cons('e', 'f'), Cons('f', 'g')]
@@ -208,17 +233,17 @@ class AssocContainerTestCase(ContainerTestCase):
         dc = cont.add(Cons('d', 'c'))
         da = cont.add(Cons('d', 'a'))
 
-        self.assertEqual(set(cont.refered_keys(car='a')), {ab, ac})
-        self.assertEqual(set(cont.refered_keys(cdr='a')), {da})
-        self.assertEqual(set(cont.refered_keys(cdr='c')), {ac, dc})
-        self.assertEqual(set(cont.refered_keys(car='a', cdr='c')), {ac})
+        assert set(cont.refered_keys(car='a')) == {ab, ac}
+        assert set(cont.refered_keys(cdr='a')) == {da}
+        assert set(cont.refered_keys(cdr='c')) == {ac, dc}
+        assert set(cont.refered_keys(car='a', cdr='c')) == {ac}
 
         cont.dismiss(car='a')
 
-        self.assertEqual(set(cont), {Cons('d', 'c'), Cons('d', 'a')})
+        assert set(cont) == {Cons('d', 'c'), Cons('d', 'a')}
 
 
-class SetsContainerTestCase(ContainerTestCase):
+class TestSetsContainer(TestContainer):
     Cont = container.SetsContainer
     elems = [('a',), ('b',), ('f',), ('c',), ('d',)]
 
@@ -229,11 +254,11 @@ class SetsContainerTestCase(ContainerTestCase):
         bc = cont.add({'b', 'c'})
         cont.add({'d', 'e'})
 
-        self.assertEqual(set(cont.refered_keys('b')), {ab, bc})
-        self.assertEqual(next(iter(cont.refered_values('e'))), {'d', 'e'})
+        assert set(cont.refered_keys('b')) == {ab, bc}
+        assert next(iter(cont.refered_values('e'))) == {'d', 'e'}
 
 
-class GroupsTestCase(SetsContainerTestCase):
+class TestGroups(TestContainer):
     Cont = container.GroupedContainer
 
     def test_groups(self):
@@ -247,14 +272,14 @@ class GroupsTestCase(SetsContainerTestCase):
         cont.part('h', 'b')
         cont.part('d', 'g')
 
-        self.assertEqual(len(cont), 4)
-        self.assertIn({'a', 'b', 'c'}, cont)
-        self.assertIn({'d', 'e'}, cont)
-        self.assertIn({'f', 'g'}, cont)
-        self.assertIn({'h'}, cont)
+        assert len(cont) == 4
+        assert {'a', 'b', 'c'} in cont
+        assert {'d', 'e'} in cont
+        assert {'f', 'g'} in cont
+        assert {'h'} in cont
 
-        self.assertRaises(IndexError, cont.join, 'b', 'e')
-        self.assertRaises(IndexError, cont.part, 'a', 'c')
+        with pytest.raises(IndexError):
+            cont.join('a', 'e')
 
-if __name__ == '__main__':
-    unittest.main()
+        with pytest.raises(IndexError):
+            cont.part('a', 'c')

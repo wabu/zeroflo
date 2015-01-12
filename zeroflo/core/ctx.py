@@ -80,8 +80,9 @@ class Context:
         self.deactivate()
 
     def setup(self, setup=None):
-        self.setups.append(setup)
-        setup()
+        if setup is not None:
+            self.setups.append(setup)
+            setup()
         return self
 
     def run(self):

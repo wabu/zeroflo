@@ -1,4 +1,3 @@
-from functools import wraps
 from collections import defaultdict
 
 import asyncio
@@ -6,7 +5,7 @@ import atexit
 import os
 from asyncio import coroutine, Task
 
-from pyadds.annotate import cached, delayed
+from pyadds.annotate import cached
 from pyadds.logging import log
 
 from . import resolve
@@ -89,7 +88,7 @@ class Process:
                 self.__log.error('%s occured when shutting down', e, exc_info=True)
 
             yield from asyncio.sleep(.2)
-            self.__log.debug('exiting')
+            self.__log.debug('exiting event loop')
             asyncio.get_event_loop().stop()
         asyncio.async(down())
 
@@ -154,14 +153,15 @@ class Control:
 
                 remote = rpc.Remote(Process(tracker=self.tracker), endpoint=path)
 
-                proc = yield from self.spawner.cospawn(remote.__remote__, __name__=str(space))
+                proc = yield from self.spawner.cospawn(
+                    remote.__remote__, __name__='{}-{}'.format(space, i))
                 with open(path.namespace()+'/pids', 'a') as f:
                     f.write('{}\n'.format(proc.pid))
 
                 yield from remote.__setup__()
 
                 yield from remote.setup()
-                return remote,proc
+                return remote, proc
 
             if space.replicate:
                 rpcs = yield from asyncio.gather(*(
@@ -189,6 +189,9 @@ class Control:
                     self.__log.warn("can't shutdown %s properly, killing it", set(procs))
                     for p in procs:
                         p.terminate()
+
+                for p in procs:
+                    p.join()
 
             future = asyncio.gather(*[shutdown(remote, proc)
                         for remote,proc in zip(self.remotes.values(), self.procs.values())],

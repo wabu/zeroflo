@@ -1,10 +1,6 @@
 from pyadds.meta import ops
 
 
-def flatten(its):
-    return (i for it in its for i in it)
-
-
 class FloDSL:
     def __init__(self, units, sources=None, targets=None, model=None):
         self.model = model
@@ -17,10 +13,6 @@ class FloDSL:
         self.targets = targets
 
     @property
-    def dsl(self):
-        return self
-
-    @property
     def left(self):
         return self.units[0]
 
@@ -28,21 +20,26 @@ class FloDSL:
     def right(self):
         return self.units[-1]
 
-    @classmethod
-    def join(cls, items):
-        return cls(flatten(i.dsl.units for i in items),
-                   sources=flatten(i.dsl.sources for i in items),
-                   targets=flatten(i.dsl.targets for i in items))
-
+    @ops.opsame
     def __add__(self, other):
         return type(self)(self.units + other.units,
                           targets=self.targets,
-                          sources=other.sources)
+                          sources=other.sources,
+                          model=self.model)
 
+    @ops.opsame
+    def __truediv__(self, other):
+        return type(self)(self.units + other.units,
+                          targets=self.targets + other.targets,
+                          sources=self.sources + other.sources,
+                          model=self.model)
+
+    @ops.opsame
     def __and__(self, other):
         self.model.join(self.right, other.left)
         return self + other
 
+    @ops.opsame
     def __or__(self, other):
         self.model.part(self.right, other.left)
         return self + other
@@ -59,16 +56,12 @@ class FloDSL:
         self.model.bundle(self.units, map=key)
         return self
 
+    @ops.opsame
     def __rshift__(self, other):
-        if isinstance(other, tuple):
-            return self >> self.join(other)
-        elif isinstance(other, FloDSL):
-            for src in self.sources:
-                for tgt in other.targets:
-                    self.model.link(src, tgt)
-            return self + other
-        else:
-            return NotImplemented
+        for src in self.sources:
+            for tgt in other.targets:
+                self.model.link(src, tgt)
+        return self + other
 
     def __iter__(self):
         done = set()
@@ -81,9 +74,9 @@ class FloDSL:
         ls = []
         ls.append('|{}|'.format(','.join(map(repr, self))))
         if self.targets:
-            ls.append('>>{}'.format(self.targets))
+            ls.append('<<{}'.format(','.join(map(repr, self.targets))))
         if self.sources:
-            ls.append('>>{}'.format(self.sources))
+            ls.append('>>{}'.format(','.join(map(repr, self.sources))))
         return ' '.join(ls)
 
 

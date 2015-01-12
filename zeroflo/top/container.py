@@ -7,9 +7,7 @@ class IdGen:
         self.next_id = 0
 
     def add(self, id):
-        if id < self.next_id:
-            raise ValueError('conflicting id')
-        self.next_id = id + 1
+        self.next_id = max(id + 1, self.next_id)
 
     def next(self):
         id = self.next_id
@@ -121,16 +119,18 @@ class Container:
         :param item: item to add
         :raises IndexError: id conflicts with ids in container
         """
-        id = int(id)
         args = []
-        if isinstance(item, slice):
-            item = slice.start
-            args.append(item.stop)
-        try:
-            if item != self._by_id[id]:
-                raise IndexError('conflicting ids')
-        except KeyError:
-            key = self._key(item)
+        if isinstance(id, slice):
+            args.append(id.stop)
+            id = id.start
+        id = int(id)
+        key = self._key(item)
+
+        if id != self._by_item.get(key, id):
+            raise IndexError('conflicting ids for same item')
+        elif item != self._by_id.get(id, item):
+            raise IndexError('conflicting item values for same id')
+        else:
             self._ids.add(id)
             self._insert(id, key, item, *args)
 
@@ -150,7 +150,7 @@ class Container:
         :return: ref-id of the item
         :raises KeyError: item not inside the container
         """
-        return self.RefId(self._by_item[item])
+        return self.RefId(self._by_item[self._key(item)])
 
     def __getitem__(self, id):
         """
@@ -170,6 +170,8 @@ class Container:
         """
         _, item = self._remove(id=id)
         return item
+
+    pop = __delitem__
 
     def __iter__(self):
         """
@@ -205,6 +207,13 @@ class Container:
         """
         return self._by_id.values()
 
+    def items(self):
+        return zip(self.keys(), self.values())
+
+    def __str__(self):
+        return '[{}]'.format(', '.join('{}: {}'.format(*v)
+                                       for v in self._by_id.items()))
+
 
 class RefersMixin:
     def _remove_ref(self, ref, id, refdct=None):
@@ -216,8 +225,7 @@ class RefersMixin:
         if not refdct[ref]:
             refdct.pop(ref)
 
-    def refered_ids(self, *args, **kws):
-        raise NotImplementedError
+    def refered_ids(self, *args, **kws): raise NotImplementedError
 
     def refered_keys(self, *args, **kws):
         """
@@ -232,6 +240,14 @@ class RefersMixin:
         :return: list of items
         """
         return [self[id] for id in self.refered_ids(*args, **kws)]
+
+    def refered_items(self, *args, **kws):
+        """
+        get values for items as refered by arguments
+        :return: list of items
+        """
+        return [(self.RefId(id), self[id])
+                for id in self.refered_ids(*args, **kws)]
 
     def dismiss(self, *args, **kws):
         """

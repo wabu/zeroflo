@@ -1,14 +1,10 @@
-from collections import defaultdict
-from contextlib import contextmanager
-
 import asyncio
 from asyncio import coroutine
 
-from .links import linkers
-
-from pyadds.logging import log
 from pyadds.forkbug import maybug
-from pyadds.annotate import delayed
+from pyadds.logging import log
+
+from .links import linkers
 
 
 class Defaults(dict):
@@ -18,7 +14,7 @@ class Defaults(dict):
         self.kws = kws
 
     def __getitem__(self, item):
-        try: 
+        try:
             return super().__getitem__(item)
         except KeyError:
             result = self[item] = self.mk(item, *self.args, **self.kws)
@@ -55,7 +51,8 @@ class Resolver:
 
     @coroutine
     def activate_chan(self, kind, chan):
-        self.__log.debug('dispatch activates %s for %s::%s', 'chan', self.endpoint, kind)
+        self.__log.debug('dispatch activates %s for %s::%s',
+                         'chan', self.endpoint, kind)
         yield from chan.setup()
 
     @coroutine
@@ -98,7 +95,8 @@ class Receiver(Resolver):
 
     @coroutine
     def activate_chan(self, kind, chan):
-        self.__log.debug('receiver activates %s for %s::%s', 'chan', self.endpoint, kind)
+        self.__log.debug('receiver activates %s for %s::%s',
+                         'chan', self.endpoint, kind)
         yield from super().activate_chan(kind, chan)
         if not self.loops:
             assert not self.main
@@ -114,7 +112,7 @@ class Receiver(Resolver):
             yield from self.queue.put((None, None))
             yield from self.main
             self.main = None
-        
+
     @coroutine
     def loop(self, chan):
         self.__log.debug('looping %s: %s', self.endpoint, chan)
@@ -134,8 +132,7 @@ class Receiver(Resolver):
         get = self.queue.get
         done = self.queue.task_done
         prts = self.portmap
-        
-        aquire = self.tracker.aquire
+
         release = self.tracker.release
 
         while True:
@@ -153,10 +150,7 @@ class Deliver(Resolver):
     @coroutine
     def register(self, unit, link):
         chan = yield from super().register(unit, link)
-        
+
         port = link.source.of(unit)
         port.channels.append(chan)
         return chan
-
-
-

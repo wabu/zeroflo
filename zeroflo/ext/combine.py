@@ -6,7 +6,7 @@ The combine defines simple ways to combine packets from inports:
 ...
 ...     @combine
 ...     def add(self, a, b, tag):
-...         a+b >> tag >> self.outs   
+...         a+b >> tag >> self.outs
 ...
 ...     @inport
 ...     def a(self, a, tag):
@@ -24,11 +24,12 @@ It includes
 import inspect
 import asyncio
 from asyncio import coroutine
-from functools import wraps
 from ..core.packet import Tag
+from ..core.unit import inport
 from pyadds.annotate import Annotate, ObjDescr, Get
 
 from pyadds.logging import log
+
 
 @log
 class Combiner:
@@ -43,7 +44,8 @@ class Combiner:
             slot.set()
         self.vals = {}
         self.tag = Tag()
-        self.__log.debug('init %x with %x by %x.%x', id(self), id(self.vals), id(self.obj), id(f))
+        self.__log.debug('init %x with %x by %x.%x',
+                         id(self), id(self.vals), id(self.obj), id(f))
 
     @coroutine
     def flush(self):
@@ -56,7 +58,7 @@ class Combiner:
 
         vals.clear()
         self.tag.clear()
-        for key,slot in slots.items():
+        for key, slot in slots.items():
             self.__log.debug('flush %s unblock [%s]', key, self)
             slot.set()
 
@@ -65,7 +67,7 @@ class Combiner:
         vals = self.vals
         slot = self.slots[key]
 
-        self.__log.debug('put %s=%s [%s]', key, val>>tag, self)
+        self.__log.debug('put %s=%s [%s]', key, val >> tag, self)
         while key in vals:
             yield from slot.wait()
             self.__log.debug('put waited %s->%s [%s]', key, set(vals), self)
@@ -78,18 +80,29 @@ class Combiner:
             yield from self.flush()
 
     def __call__(self, tag=Tag(), **kws):
-        self.__log.debug('combining %s :: %s [%s]', set(kws), set(self.vals), self)
-        puts = [self.put(k, v, tag) for k,v in kws.items()]
+        self.__log.debug('combining %s :: %s [%s]',
+                         set(kws), set(self.vals), self)
+        puts = [self.put(k, v, tag) for k, v in kws.items()]
         yield from asyncio.gather(*puts)
-        self.__log.debug('combined %s -> %s [%s]', set(kws), set(self.vals), self)
+        self.__log.debug('combined %s -> %s [%s]',
+                         set(kws), set(self.vals), self)
 
     def __str__(self):
-        return 'combine:{} {}'.format(self.name, 
-                '|'.join('{}{}={}'.format('.' if slot.is_set() else '!', 
-                        key, self.vals.get(key, '_'))
-                    for key,slot in sorted(self.slots.items())))
+        return 'combine:{} {}'.format(
+            self.name, '|'.join(
+                '{}{}={}'.format('.' if slot.is_set() else '!',
+                                 key, self.vals.get(key, '_'))
+                for key, slot in sorted(self.slots.items())))
+
 
 class combine(Annotate, ObjDescr, Get):
     def __default__(self, obj):
         Combiner.logger.debug('combine for %s [%s]', self.name, self.definition)
         return Combiner(obj, self.definition)
+
+    def port(self, name):
+        @inport
+        def combine(obj, data, tag):
+            bound = self.__default__(obj)
+            yield from bound(**{'a': data, 'tag': tag})
+        return combine

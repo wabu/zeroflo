@@ -128,7 +128,7 @@ class Topology(Idd):
 
         self.ports = defaultdict(ddict)
         self.links = []
-    
+
         self.outlinks = defaultdict(dlist)
         self.inlinks = defaultdict(dlist)
 
@@ -262,7 +262,7 @@ class Topology(Idd):
         ----------
         ref : <tp>, default None
             any topological reference object (space, unit, port)
-            
+
         kind : {None, 'source', 'target'}, default None
             kink of the link or None
         """
@@ -353,13 +353,10 @@ class Topology(Idd):
                 outs = self.links_from(unit)
 
                 its.append('  {!r}:'.format(unit))
-                its.extend(['    {} << {!r}'.format(p.target.port, p.source) 
+                its.extend(['    {} << {!r}'.format(p.target.port, p.source)
                             for p in ins])
-                its.extend(['    {} >> {!r}'.format(p.source.port, p.target) 
+                its.extend(['    {} >> {!r}'.format(p.source.port, p.target)
                             for p in outs])
             items.append(its)
 
         return '\n\n'.join('\n'.join(its) for its in items)
-                
-
-
