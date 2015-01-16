@@ -27,11 +27,30 @@ def test_join_part():
     top, (a, b, c) = mk_top()
 
     top.join('a', 'b')
-    top.part('b', 'c')
+    top.par('b', 'c')
 
+    assert top.space_of('a') == top.space_of('b')
+    assert {'a', 'b'} == top.space_of('b').units
+    assert {'c'} == top.space_of('c').units
     assert len(top.spaces) == 2
-    assert {a, b} in top.spaces
-    assert {c} in top.spaces
+
+    with pytest.raises(IndexError):
+        top.par('a', 'b')
+    with pytest.raises(IndexError):
+        top.join('b', 'c')
+
+    top.join('d')
+    assert len(top.spaces) == 3
+
+    top.join('b', 'd')
+    assert len(top.spaces) == 2
+
+    top.unregister('c')
+    assert len(top.spaces) == 1
+
+    top.register('c')
+    top.join('b', 'c')
+    assert len(top.spaces) == 1
 
 
 def test_link():
@@ -45,17 +64,15 @@ def test_link():
     atob = top.link(aout, bins)
     btoc = top.link(bout, cins)
 
-    assert len(top.srcports) == 2
-    assert len(top.tgtports) == 2
     assert len(top.links) == 2
 
-    assert top.srcports[atob.sid] == aout
-    assert top.tgtports[atob.tid] == bins
+    assert top.links_from('a') == {atob}
+    assert top.links_to('b') == {atob}
 
-    assert top.srcports[btoc.sid] == bout
-    assert top.tgtports[btoc.tid] == cins
+    assert top.links_from('b') == {btoc}
+    assert top.links_to('c') == {btoc}
 
-    top.unlink(aout, bins)
+    top.unlink(atob)
     assert len(top.links) == 1
 
     top.link(aout, bins)
@@ -73,22 +90,16 @@ def test_bundle():
     b4 = top.bundle({'a', 'b', 'c'}, baz=4)
 
     assert len(top.bundles) == 4
-    assert top.bundle_opts[b1.id] == {'foo': 1}
-    assert top.bundle_opts[b2.id] == {'bar': 2}
-    assert top.bundle_opts[b3.id] == {'foo': 3}
-    assert top.bundle_opts[b4.id] == {'baz': 4}
-
-    top.unbundle({'a', 'c'})
-    assert len(top.bundles) == 3
+    assert b1.opts == {'foo': 1}
+    assert b2.opts == {'bar': 2}
+    assert b3.opts == {'foo': 3}
+    assert b4.opts == {'baz': 4}
 
     top.unregister('c')
-    assert len(top.bundles) == 2
+    assert len(top.bundles) == 3
 
-    top.bundle({'a', 'b'}, baz=3)
-    assert top.bundle_opts[b1.id] == {'foo': 1, 'baz': 3}
-
-    with pytest.raises(IndexError):
-        top.bundle({'a', 'b'}, foo=3)
+    b5 = top.bundle({'a', 'b'}, baz=3)
+    assert b5.opts == {'baz': 3}
 
 
 class Port:
@@ -176,15 +187,11 @@ def test_simple():
     assert d3.sources == [u3.out]
     assert set(d3) == {u1, u2, u3, u4}
 
-    i1 = top.units.index(u1)
-    i2 = top.units.index(u2)
-    i3 = top.units.index(u3)
-    i4 = top.units.index(u4)
-
     assert len(top.spaces) == 3
-    assert {i1} in top.spaces
-    assert {i2, i3} in top.spaces
-    assert {i4} in top.spaces
+    assert {u1} == top.space_of(u1).units
+    assert {u2, u3} == top.space_of(u2).units
+    assert {u2, u3} == top.space_of(u3).units
+    assert {u4} == top.space_of(u4).units
 
     d4 = (u2 / u3) >> u4
     assert len(top.links) == 4
@@ -192,38 +199,4 @@ def test_simple():
     assert d4.targets == [u2.process, u3.process]
 
     assert len(top.bundles) == 3
-    assert {i1} in top.bundles
-    assert {i1, i4} in top.bundles
-    assert {i2} in top.bundles
-
-    b1 = top.bundles.index({i1})
-    b2 = top.bundles.index({i1, i4})
-    b3 = top.bundles.index({i2})
-
-    assert top.bundle_opts[b1.id] == {'map': 'baz'}
-    assert top.bundle_opts[b2.id] == {'repl': 4}
-    assert top.bundle_opts[b3.id] == {'mul': 2}
-
-    assert repr(top) == (
-        "*space-0:\n"
-        "  u4 (*unit-3):\n"
-        "    u2.out >> u4.process\n"
-        "    u3.out >> u4.process\n"
-        "*space-1:\n"
-        "  u1 (*unit-0):\n"
-        "    u1.out >> u2.process\n"
-        "*space-2:\n"
-        "  u3 (*unit-2):\n"
-        "    u2.out >> u3.process\n"
-        "    u3.out >> u4.process\n"
-        "  u2 (*unit-1):\n"
-        "    u1.out >> u2.process\n"
-        "    u2.out >> u3.process\n"
-        "    u2.out >> u4.process\n"
-        "\n"
-        "{*unit-0}:\n"
-        "    {'map': 'baz'}\n"
-        "{*unit-3, *unit-0}:\n"
-        "    {'repl': 4}\n"
-        "{*unit-1}:\n"
-        "    {'mul': 2}")
+    # TODO ... further bundle spec

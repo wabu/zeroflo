@@ -1,4 +1,5 @@
-from collections import namedtuple
+from collections import defaultdict
+
 
 class Units:
     def __init__(self):
@@ -9,6 +10,9 @@ class Units:
 
     def unregister(self, unit):
         self.units.remove(unit)
+
+    def update(self, other):
+        self.units.update(other.units)
 
 
 def remove_from(dct, key, item):
@@ -23,16 +27,26 @@ class Link:
         self.source = source
         self.target = target
 
+    def __str__(self):
+        return '{}>>{}'.format(self.source, self.target)
+
+    def __repr__(self):
+        return '{!r} >> {!r}'.format(self.source, self.target)
+
 
 class Links(Units):
     def __init__(self):
-        self._links = set()
-        self._source_refs = defaultdict(list)
-        self._target_refs = defaultdict(list)
+        super().__init__()
+        # {unit: {link}}
+        self._source_refs = defaultdict(set)
+        self._target_refs = defaultdict(set)
+
+    @property
+    def links(self):
+        return set.union(*self._source_refs.values() or [set()])
 
     def link(self, source, target):
         link = Link(source, target)
-        self._links.add(link)
 
         self._source_refs[source.unit].add(link)
         self._target_refs[target.unit].add(link)
@@ -55,39 +69,53 @@ class Links(Units):
     def unlink(self, link):
         remove_from(self._source_refs, link.source.unit, link)
         remove_from(self._target_refs, link.target.unit, link)
-        self._links.remove(link)
 
     def unregister(self, unit):
-        links = self._source_refs[unit] + self._target_refs[unit]
+        links = self._source_refs[unit] | self._target_refs[unit]
         for link in links:
             self.unlink(link)
         super().unregister(unit)
 
+    def update(self, other):
+        super().update(other)
+        self._source_refs.update(other._source_refs)
+        self._target_refs.update(other._target_refs)
+
 
 class Space:
-    def __init__(self, units=set()):
-        self.units = units
+    def __init__(self, units=None):
+        self.units = units or set()
+
+    def __str__(self):
+        return '&'.join(map(str, self.units))
+
+    def __repr__(self):
+        return '({})'.format(' & '.join(map(repr, self.units)))
 
 
 class Spaces(Units):
     def __init__(self):
-        # {space}
-        self._spaces = set()
-
+        super().__init__()
         # {unit: space}
-        self._refs = {}
-
+        self._spaces = {}
         # {space: {space}}
         self._pars = defaultdict(set)
 
-    def space_of(unit):
-        return self.refs.get(unit)
+    @property
+    def spaces(self):
+        return set(self._spaces.values())
 
-    def join(self, units):
+    def space_of(self, unit):
+        return self._spaces.get(unit)
+
+    def join(self, *units):
         # spaces that may get joined
         spaces = set(filter(None, map(self.space_of, units)))
         # pars of these spaces
-        pars = set.union(self._pars[space] for space in spaces)
+        if spaces:
+            pars = set.union(*(self._pars[space] for space in spaces))
+        else:
+            pars = set()
 
         if len(pars.intersection(spaces)) > 1:
             raise IndexError('Cannot join units that were pared')
@@ -96,17 +124,21 @@ class Spaces(Units):
         others = []
         if len(spaces) == 0:
             space = Space()
-            self._spaces.add(space)
         elif len(spaces) == 1:
             space, = spaces
         else:
-            space,*others = spaces
+            space, *others = spaces
 
         # primary space gets new and others units and pars
         space.units.update(units)
+        for u in units:
+            self._spaces[u] = space
+
         self._pars[space] = pars
         for other in others:
-            space.units.update(others)
+            space.units.update(other.units)
+            for u in other.units:
+                self._spaces[u] = space
 
         # remove par references to others but par the new space
         for par in pars:
@@ -115,27 +147,36 @@ class Spaces(Units):
 
         return space
 
-
-    def par(self, units):
-        for u in units:
+    def par(self, *units):
+        for unit in units:
             space = self.space_of(unit)
             if space:
                 if len(space.units.intersection(units)) > 1:
                     raise IndexError('Cannot par joined units')
 
-        spaces = {self.space_of(unit) or self.join({u}) for u in units}
+        spaces = {self.space_of(unit) or self.join(u) for u in units}
         for space in spaces:
-            self._parts[space] = spaces
+            self._pars[space] = spaces
 
     def unregister(self, unit):
-        space = self._refs.pop(unit)
+        super().unregister(unit)
+
+        if unit not in self._spaces:
+            return
+
+        space = self._spaces.pop(unit)
         space.units.remove(unit)
 
-        if not space:
+        if not space.units:
             pars = self._pars.pop(space)
             for par in pars:
-                self._pars[par].remove(space)
-        super().unregister(unit)
+                if par.units:
+                    self._pars[par].remove(space)
+
+    def update(self, other):
+        super().update(other)
+        self._spaces.update(other._spaces)
+        self._pars.update(other._pars)
 
 
 class Bundle:
@@ -143,35 +184,37 @@ class Bundle:
         self.units = units
         self.opts = opts
 
-    def update(self, opts):
-        conflict = {opt for opt in opts
-                        if opt in self.opts and self.opts[opt] != opts[opt]}
-
-        if conflict:
-            raise IndexError('Options {} already set for bundle {}'.format(
-                conflict, self))
-
-        self.opts.update(opts)
-
 
 class Bundles(Units):
     def __init__(self):
-        self._bunldes = defaultdict(list)
+        super().__init__()
+        # {unit: {bundle}}
+        self._bundles = defaultdict(set)
 
-    def bunlde(self, units, **opts):
+    @property
+    def bundles(self):
+        return set.union(*self._bundles.values())
+
+    def bundles_of(self, *units):
+        return set.union(*(self._bundles[u] for u in units))
+
+    def bundle(self, units, **opts):
         bundle = Bundle(units, opts)
 
         for u in units:
-            self._bundles[u].append(bundle)
+            self._bundles[u].add(bundle)
 
         return bundle
 
     def unregister(self, unit):
-        for u, bdl in self._bunldes.items():
-            bdl.remove(unit)
-            if not bdl:
-                del self._bundles[u]
+        for bdl in self._bundles.pop(unit, {}):
+            bdl.units.remove(unit)
         super().unregister(unit)
+
+    def update(self, other):
+        super().update(other)
+        self._bundles.update(other._bundles)
 
 
 class Topology(Links, Spaces, Bundles):
+    pass

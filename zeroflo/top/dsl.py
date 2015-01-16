@@ -50,7 +50,7 @@ class FloDSL:
 
     @ops.opsame
     def __or__(self, other):
-        self.model.part(self.right, other.left)
+        self.model.par(self.right, other.left)
         return self + other
 
     def __mul__(self, num):
