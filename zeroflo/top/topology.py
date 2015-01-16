@@ -196,7 +196,7 @@ class Bundles(Units):
         return set.union(*self._bundles.values())
 
     def bundles_of(self, *units):
-        return set.union(*(self._bundles[u] for u in units))
+        return set.intersection(*(self._bundles[u] for u in units))
 
     def bundle(self, units, **opts):
         bundle = Bundle(units, opts)

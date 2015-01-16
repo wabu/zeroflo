@@ -1,9 +1,17 @@
 from pyadds.meta import ops
+from pyadds.annotate import cached
+
+from .topology import Topology
 
 
 class FloDSL:
-    def __init__(self, units, sources=None, targets=None, model=None):
-        self.model = model
+    def __init__(self, units, *, topology, sources=None, targets=None):
+        self.topology = topology
+        for u in units:
+            if u.topology != topology:
+                topology.update(u.topology)
+                u.topology = topology
+
         self.units = tuple(units)
         if sources is None:
             sources = [u.out for u in units if hasattr(u, 'out')]
@@ -34,42 +42,42 @@ class FloDSL:
         return type(self)(self.units + other.units,
                           targets=self.targets,
                           sources=other.sources,
-                          model=self.model)
+                          topology=self.topology)
 
     @ops.opsame
     def __truediv__(self, other):
         return type(self)(self.units + other.units,
                           targets=self.targets + other.targets,
                           sources=self.sources + other.sources,
-                          model=self.model)
+                          topology=self.topology)
 
     @ops.opsame
     def __and__(self, other):
-        self.model.join(self.right, other.left)
+        self.topology.join(self.right, other.left)
         return self + other
 
     @ops.opsame
     def __or__(self, other):
-        self.model.par(self.right, other.left)
+        self.topology.par(self.right, other.left)
         return self + other
 
     def __mul__(self, num):
-        self.model.bundle(self.units, mul=num)
+        self.topology.bundle(self.units, mul=num)
         return self
 
     def __pow__(self, num):
-        self.model.bundle(self.units, repl=num)
+        self.topology.bundle(self.units, repl=num)
         return self
 
     def __xor__(self, key):
-        self.model.bundle(self.units, map=key)
+        self.topology.bundle(self.units, map=key)
         return self
 
     @ops.opsame
     def __rshift__(self, other):
         for src in self.sources:
             for tgt in other.targets:
-                self.model.link(src, tgt)
+                self.topology.link(src, tgt)
         return self + other
 
     def __iter__(self):
@@ -93,29 +101,26 @@ DSLMixin = ops.autowraped_ops(FloDSL, by='dsl')
 
 
 class UnitDSL(DSLMixin):
-    def __init__(self, model):
-        self.model = model
+    @cached
+    def topology(self):
+        top = Topology()
+        top.register(self)
+        return top
 
     @property
     def dsl(self):
-        return FloDSL(units=(self,), model=self.model)
+        return FloDSL(units=(self,), topology=self.topology)
 
 
 class SourceDSL(DSLMixin):
-    def __init__(self, model):
-        self.model = model
-
     @property
     def dsl(self):
         return FloDSL(units=(self.unit,), sources={self}, targets={},
-                      model=self.model)
+                      topology=self.unit.topology)
 
 
 class TargetDSL(DSLMixin):
-    def __init__(self, model):
-        self.model = model
-
     @property
     def dsl(self):
         return FloDSL(units=(self.unit,), sources={}, targets={self},
-                      model=self.model)
+                      topology=self.unit.topology)

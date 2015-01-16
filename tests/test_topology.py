@@ -103,8 +103,8 @@ def test_bundle():
 
 
 class Port:
-    def __init__(self, name, unit, model):
-        super().__init__(model)
+    def __init__(self, name, unit):
+        super().__init__()
         self.name = name
         self.unit = unit
 
@@ -123,14 +123,14 @@ class Out(Port, SourceDSL):
 
 
 class Unit(UnitDSL):
-    def __init__(self, model, name, ins=['process'], outs=['out']):
-        super().__init__(model=model)
+    def __init__(self, name, ins=['process'], outs=['out']):
+        super().__init__()
         self.name = name
 
         for prt in ins:
-            setattr(self, prt, Ins(prt, self, model))
+            setattr(self, prt, Ins(prt, self))
         for prt in outs:
-            setattr(self, prt, Out(prt, self, model))
+            setattr(self, prt, Out(prt, self))
 
     def __str__(self):
         return self.name
@@ -139,12 +139,10 @@ class Unit(UnitDSL):
 
 
 def test_simple():
-    top = Topology()
-
-    u1 = Unit(top, 'u1')
-    u2 = Unit(top, 'u2')
-    u3 = Unit(top, 'u3')
-    u4 = Unit(top, 'u4')
+    u1 = Unit('u1')
+    u2 = Unit('u2')
+    u3 = Unit('u3')
+    u4 = Unit('u4')
 
     assert (u1 + u2).u1 == u1
     assert (u1 / u2).u2 == u2
@@ -153,13 +151,15 @@ def test_simple():
         (u1 / u2).u3
 
     with pytest.raises(AttributeError):
-        (u1 + Unit(top, 'u1')).u1
+        (u1 + Unit('u1')).u1
 
     assert u1.dsl.left == u1
     assert u2.dsl.right == u2
 
     assert u2.dsl.targets == [u2.process]
     assert u3.dsl.sources == [u3.out]
+
+    top = u1.topology
 
     d1 = u1.out >> u2.process
     assert len(top.links) == 1
@@ -199,4 +199,7 @@ def test_simple():
     assert d4.targets == [u2.process, u3.process]
 
     assert len(top.bundles) == 3
-    # TODO ... further bundle spec
+    assert next(iter(top.bundles_of(u2))).opts == {'mul': 2}
+    assert next(iter(top.bundles_of(u1, u4))).opts == {'repl': 4}
+    assert next(iter(top.bundles_of(u1)
+                     - top.bundles_of(u4))).opts == {'map': 'baz'}
