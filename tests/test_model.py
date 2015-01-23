@@ -9,7 +9,7 @@ class Simple(Unit):
     def process(self, data, tag): pass
 
 
-def test_base():
+def test_simple():
     u1 = Simple(name='a')
     u2 = Simple(name='b')
     u3 = Simple(name='c')
@@ -36,6 +36,7 @@ def test_base():
     comb = (u1 / u2) >> u3
 
     assert len(u1.model.links()) == 3
+    assert u3.model == u1.model
     assert comb.units == [u1, u2, u3]
 
     dist = u1 | u2 & u3

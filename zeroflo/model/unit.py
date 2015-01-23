@@ -60,6 +60,13 @@ class SourcePort(Port):
 
 
 class port(Conotate, cached):
+    """
+    decorateor base to define ports for a unit
+    >>> class Foo(Unit):
+        @inport
+        def bar(self, data, tag):
+            ...
+    """
     __port__ = Port
 
     def __default__(self, unit):

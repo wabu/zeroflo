@@ -1,22 +1,19 @@
 from pyadds.meta import ops
-from pyadds.annotate import delayed
+from pyadds.cooptypes import Co
+from pyadds.annotate import cached
 
 from zeroflo import context
-from zeroflo.model.base import MayCombine
-from zeroflo.model.links import Links, MayLink
-from zeroflo.model.spaces import Spaces, MaySpace
+from zeroflo.model.base import Combines
+from zeroflo.model.links import Links, BuildLinks
+from zeroflo.model.spaces import Spaces, BuildSpaces
 
 
 class Model(Links, Spaces):
     pass
 
 
-@ops.operate
-class _Builds(MayCombine, MayLink, MaySpace):
-    pass
-
-class Builds(_Builds):
-    @delayed
+class Builds(ops.operate(Co[Combines, BuildLinks, BuildSpaces])):
+    @cached
     def model(self):
         return context.Model()
 

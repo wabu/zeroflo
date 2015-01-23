@@ -1,24 +1,30 @@
 from pyadds.meta import ops
 
-from zeroflo import context
 
+class ModelBase:
+    """
+    ModelBase it the base for cooperative model components of the flow.
 
-class Model:
+    The models constructer may consume some options and they must support
+    updates, incooperating another model into themselfs.
+    """
     def update(self, other):
         pass
 
 
-class Build:
+class Builds:
     """
-    This is a base class for build components, which are used to build-up the
-    flow model.  Different build componets manage different aspects of the flow
-    model and are combined to build the model.
+    This is a base class for components that interact with the model.
+    Different builder componets manage different aspects of the flow
+    model and when combined they are used to buildup the model.
 
     Build components are based on other objects, which export `__bind_...__`
-    methods used to access the aspacts of the object the builder is interrested
+    methods used to access the aspacts of the object the modelers is interrested
     in. For example, a unit and it's ports are such objects, on which builders
     that link ports or distribute units are based appon. Moreover a builder
     can also be based on other builders or combinations thereof.
+
+    :see: zeroflo.model.links, zeroflo.model.spaces
     """
     def __init__(self, on):
         self.on = on
@@ -33,7 +39,7 @@ class Build:
         return type(self)(Series(self.model, *[o.on for o in objs]))
 
 
-class HasUnits(Build):
+class RequireUnits(Builds):
     """
     Ensures that the build component has units to work on.
     """
@@ -42,7 +48,7 @@ class HasUnits(Build):
         self.units = on.__bind_units__()
 
 
-class HasPorts(Build):
+class RequirePorts(Builds):
     """
     Ensures that the build component has units to work on.
     """
@@ -99,10 +105,11 @@ class Series(Combine):
                 'sources': self.bases[-1].__bind_ports__()['sources']}
 
 
-class MayCombine(Build):
+class Combines(Builds):
     """
-    Tries to combine this build component with others
+    Combine this build component with another into a single one, operating
+    on both of the original components.
     """
     @ops.opsame
-    def __truediv__(self, other: Build):
+    def __truediv__(self, other: Builds):
         return self.__combine__(other)

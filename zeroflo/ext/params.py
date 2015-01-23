@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _size_suffixes = ['k', 'm', 'g', 't', 'p']
-class param(Annotate, Cached, ObjDescr, Get, Set):
+class param(Cached, ObjDescr, Get, Set):
     @staticmethod
     def sizeof(size):
         try:
@@ -41,4 +41,3 @@ class Paramed:
     @inport
     def setup(self, _, **kws):
         self.set_params(kws)
-

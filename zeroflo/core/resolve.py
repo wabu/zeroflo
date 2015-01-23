@@ -21,7 +21,7 @@ class Defaults(dict):
             return result
 
 
-@log(short='rsl', sign='##')
+@log
 class Resolver:
     __site__ = None
 
@@ -73,7 +73,7 @@ class Resolver:
             yield from self.close_chan(self.chans[link.kind])
 
 
-@log(short='rcv', sign='#<')
+@log
 class Receiver(Resolver):
     __site__ = 'target'
 

@@ -8,13 +8,13 @@ from .zmqtools import create_zmq_stream
 from pyadds.annotate import cached
 from pyadds.logging import log, logging
 
-@log(short='tkm', sign='.!')
+@log
 class Remote:
     def __init__(self, obj, endpoint):
         self.obj = obj
         self.endpoint = endpoint
         self.address = 'ipc://{}/rpc'.format(endpoint.namespace())
-        
+
     @coroutine
     def __remote__(self):
         self.stream = stream = yield from create_zmq_stream(
@@ -67,7 +67,7 @@ class Track:
         self.endpoint = endpoint
         self.address = 'ipc://{}/track'.format(endpoint.namespace())
 
-@log(short='tkr', sign='.!')
+@log
 class Tracker(Track):
     @coroutine
     def setup(self):
@@ -86,7 +86,7 @@ class Tracker(Track):
         yield from self.stream.push(idd, -n)
 
 
-@log(short='tkm', sign='!.')
+@log
 class Master(Track):
     @coroutine
     def setup(self):
@@ -106,7 +106,7 @@ class Master(Track):
                 counter[idd] += n
                 assert (any(c>0 for c in counter.values()) or
                         all(c==0 for c in counter.values())), 'negative pkg counter'
-                self.__log.debug('! %+d to %x gets %+3d %r', n, idd, self.counter[idd], 
+                self.__log.debug('! %+d to %x gets %+3d %r', n, idd, self.counter[idd],
                         self)
                 if not counter[idd]:
                     with (yield from condition):
