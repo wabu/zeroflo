@@ -5,23 +5,26 @@ class ModelBase:
     """
     ModelBase it the base for cooperative model components of the flow.
 
-    The models constructer may consume some options and they must support
-    updates, incooperating another model into themselfs.
+    The models constructor may consume some options and they must support
+    updates, incorporating another model into themselves.
     """
     def update(self, other):
+        pass
+
+    def unregister(self, unit):
         pass
 
 
 class Builds:
     """
     This is a base class for components that interact with the model.
-    Different builder componets manage different aspects of the flow
+    Different builder components manage different aspects of the flow
     model and when combined they are used to buildup the model.
 
     Build components are based on other objects, which export `__bind_...__`
-    methods used to access the aspacts of the object the modelers is interrested
+    methods used to access the aspects of the object the modelers is interested
     in. For example, a unit and it's ports are such objects, on which builders
-    that link ports or distribute units are based appon. Moreover a builder
+    that link ports or distribute units are based upon. Moreover a builder
     can also be based on other builders or combinations thereof.
 
     :see: zeroflo.model.links, zeroflo.model.spaces
@@ -47,6 +50,14 @@ class RequireUnits(Builds):
         super().__init__(on)
         self.units = on.__bind_units__()
 
+    @property
+    def left(self):
+        return self.units[0]
+
+    @property
+    def right(self):
+        return self.units[-1]
+
 
 class RequirePorts(Builds):
     """
@@ -66,6 +77,7 @@ class Combine:
     """
     def __init__(self, model, *bases):
         self.bases = bases
+        self._model = None
         self.model = model
 
     @property

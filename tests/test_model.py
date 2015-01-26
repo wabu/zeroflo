@@ -1,12 +1,21 @@
+import pytest
+
 from zeroflo.model.unit import Unit, inport, outport
 
 
 class Simple(Unit):
     @outport
-    def out(): pass
+    def out(self):
+        """
+        outport for no data
+        """
 
     @inport
-    def process(self, data, tag): pass
+    def process(self, data, tag):
+        """
+        :param data: data of a packet
+        :param tag: tag for the data
+        """
 
 
 def test_simple():
@@ -43,3 +52,14 @@ def test_simple():
 
     assert len(u1.model.spaces()) == 2
     assert dist.units == [u1, u2, u3]
+
+
+    assert u1 | u3
+    with pytest.raises(IndexError):
+        u1 & u3
+
+    assert u2 & u3
+    with pytest.raises(IndexError):
+        u2 | u3
+
+    assert len(u1.model.spaces()) == 2

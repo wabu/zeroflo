@@ -7,7 +7,7 @@ from zeroflo.model import Builds
 class Unit(Builds):
     def __init__(self, name=None):
         super().__init__()
-        self.name = name_of(self)
+        self.name = name or name_of(self)
 
     def __bind_units__(self):
         return [self]
@@ -34,10 +34,11 @@ class Unit(Builds):
 
 class Port(Builds):
     __kind__ = None
+
     def __init__(self, unit, name, definition):
         self.unit = unit
         self.name = name
-        self.defininition = definition
+        self.definition = definition
 
     def __bind_units__(self):
         return [self.unit]
@@ -59,13 +60,12 @@ class SourcePort(Port):
     __kind__ = 'source'
 
 
-class port(Conotate, cached):
+class PortAnnotation(Conotate, cached):
     """
-    decorateor base to define ports for a unit
+    decorator base to define ports for a unit
     >>> class Foo(Unit):
-        @inport
-        def bar(self, data, tag):
-            ...
+    ... @inport
+    ... def bar(self, data, tag):
     """
     __port__ = Port
 
@@ -73,9 +73,13 @@ class port(Conotate, cached):
         return self.__port__(unit, self.name, self.definition)
 
 
-class inport(port):
+class InPortAnnotation(PortAnnotation):
     __port__ = TargetPort
 
 
-class outport(port):
+class OutPortAnnotation(PortAnnotation):
     __port__ = SourcePort
+
+
+inport = InPortAnnotation
+outport = OutPortAnnotation

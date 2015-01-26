@@ -1,5 +1,6 @@
 from collections import defaultdict
 from pyadds.meta import ops
+from pyadds import Anything
 
 from zeroflo.model.base import RequireUnits, ModelBase
 
@@ -19,28 +20,23 @@ class Spaces(ModelBase):
     def __init__(self):
         super().__init__()
         # {unit: space}
-        self._spaces = {}
+        self._spaces = []
         # {space: {space}}
         self._pars = defaultdict(set)
 
-    def spaces(self, units=None):
-        spaces = []
-        if units is not None and not isinstance(units, set):
+    def spaces(self, units=Anything):
+        if not isinstance(units, set):
             units = {units}
-        for space in self._spaces.values():
-            if units is None or set(space.units).intersection(units):
+        spaces = []
+        for space in self._spaces:
+            if units.intersection(set(space.units)):
                 spaces.append(space)
         return spaces
 
     def join(self, *units):
-        # spaces that may get joined
-        spaces = set(filter(None, map(self.spaces, units)))
+        spaces = self.spaces(set(units))
         # pars of these spaces
-        if spaces:
-            pars = set.union(*(self._pars[space] for space in spaces))
-        else:
-            pars = set()
-
+        pars = set.union(*(self._pars[space] for space in spaces)) if spaces else set()
         if len(pars.intersection(spaces)) > 1:
             raise IndexError('Cannot join units that were pared')
 
@@ -48,6 +44,7 @@ class Spaces(ModelBase):
         others = []
         if len(spaces) == 0:
             space = Space()
+            self._spaces.append(space)
         elif len(spaces) == 1:
             space, = spaces
         else:
@@ -55,14 +52,11 @@ class Spaces(ModelBase):
 
         # primary space gets new and others units and pars
         space.units.update(units)
-        for u in units:
-            self._spaces[u] = space
 
         self._pars[space] = pars
         for other in others:
             space.units.update(other.units)
-            for u in other.units:
-                self._spaces[u] = space
+            self._spaces.remove(other)
 
         # remove par references to others but par the new space
         for par in pars:
@@ -72,15 +66,18 @@ class Spaces(ModelBase):
         return space
 
     def par(self, *units):
-        for unit in units:
-            space = self.spaces(unit)
-            if space:
-                if len(space.units.intersection(units)) > 1:
-                    raise IndexError('Cannot par joined units')
-
-        spaces = {self.spaces(unit) or self.join(u) for u in units}
+        spaces = set(self.spaces(set(units)))
+        spaced = set()
         for space in spaces:
-            self._pars[space] = spaces
+            if len(space.units.intersection(units)) > 1:
+                raise IndexError('Cannot par joined units')
+            spaced.update(space.units)
+
+        new = set(units).difference(spaced)
+        spaces.update(map(self.join, new))
+
+        for space in spaces:
+            self._pars[space] = spaces.difference({space})
 
     def unregister(self, unit):
         super().unregister(unit)
@@ -99,7 +96,7 @@ class Spaces(ModelBase):
 
     def update(self, other):
         super().update(other)
-        self._spaces.update(other._spaces)
+        self._spaces.extend(other._spaces)
         self._pars.update(other._pars)
 
 
@@ -107,11 +104,11 @@ class BuildSpaces(RequireUnits):
     @ops.opsame
     def __and__(self, other: RequireUnits):
         res = self.__combine__(other)
-        self.model.join(other)
+        self.model.join(self.right, other.left)
         return res
 
     @ops.opsame
     def __or__(self, other: RequireUnits):
         res = self.__combine__(other)
-        self.model.par(other)
+        self.model.par(self.right, other.left)
         return res

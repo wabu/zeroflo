@@ -3,6 +3,7 @@ from pyadds import Anything
 
 from zeroflo.model.base import RequirePorts, ModelBase
 
+
 class Link:
     def __init__(self, source, target, **opts):
         self.source = source
@@ -36,10 +37,8 @@ class Links(ModelBase):
             self._links.remove(link)
 
     def unregister(self, unit):
-        for link in self.links:
-            source, target, _ = link
-            if unit in {source.unit, target.unit}:
-                self.unlink(link)
+        for link in self.links(sources={unit}) + self.links(targets={unit}):
+            self.unlink(link.source, link.target)
         super().unregister(unit)
 
     def update(self, other):
