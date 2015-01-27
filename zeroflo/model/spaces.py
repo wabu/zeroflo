@@ -82,20 +82,22 @@ class Spaces(ModelBase):
     def unregister(self, unit):
         super().unregister(unit)
 
-        if unit not in self._spaces:
+        spaces = self.spaces(unit)
+        if not spaces:
             return
-
-        space = self._spaces.pop(unit)
+        space = spaces[0]
         space.units.remove(unit)
-
         if not space.units:
             pars = self._pars.pop(space)
             for par in pars:
                 if par.units:
                     self._pars[par].remove(space)
+            spaces.remove(space)
 
-    def update(self, other):
-        super().update(other)
+    def __update__(self, other):
+        assert isinstance(other, Spaces)
+
+        super().__update__(other)
         self._spaces.extend(other._spaces)
         self._pars.update(other._pars)
 

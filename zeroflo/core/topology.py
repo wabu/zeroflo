@@ -81,7 +81,7 @@ class Bundle:
             if isinstance(item, Unit):
                 yield item
             else:
-                yield from item.units()
+                yield from item.units
 
 
 class Link:

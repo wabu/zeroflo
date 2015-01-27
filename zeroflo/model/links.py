@@ -41,8 +41,9 @@ class Links(ModelBase):
             self.unlink(link.source, link.target)
         super().unregister(unit)
 
-    def update(self, other):
-        super().update(other)
+    def __update__(self, other):
+        assert isinstance(other, Links)
+        super().__update__(other)
         self._links += other._links
 
 

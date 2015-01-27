@@ -17,49 +17,73 @@ class Simple(Unit):
         :param tag: tag for the data
         """
 
+@pytest.fixture
+def a():
+    return Simple(name='a')
 
-def test_simple():
-    u1 = Simple(name='a')
-    u2 = Simple(name='b')
-    u3 = Simple(name='c')
+@pytest.fixture
+def b():
+    return Simple(name='a')
 
-    both = u1.__truediv__(u2)
+@pytest.fixture
+def c():
+    return Simple(name='a')
 
-    assert u1.model is u2.model
+def test_model(a, b):
+    assert a.model != b.model
 
-    assert both.units == [u1, u2]
-    assert both.source_ports == [u1.out, u2.out]
-    assert both.target_ports == [u1.process, u2.process]
+    assert a in a.model.units()
+    assert b in b.model.units()
 
-    m1 = u1.model
-    con = u1 >> u2
-
-    assert m1 is u2.model
-
-    assert len(u1.model.links()) == 1
-
-    assert con.units == [u1, u2]
-    assert con.source_ports == [u2.out]
-    assert con.target_ports == [u1.process]
-
-    comb = (u1 / u2) >> u3
-
-    assert len(u1.model.links()) == 3
-    assert u3.model == u1.model
-    assert comb.units == [u1, u2, u3]
-
-    dist = u1 | u2 & u3
-
-    assert len(u1.model.spaces()) == 2
-    assert dist.units == [u1, u2, u3]
+    a.model.join(b)
+    # FIXME do we require a unification for model functions?
+    #assert a.model == b.model
 
 
-    assert u1 | u3
+def test_dsl(a, b, c):
+    both = a.__truediv__(b)
+
+    assert a.model is b.model
+
+    assert both.units == [a, b]
+    assert both.source_ports == [a.out, b.out]
+    assert both.target_ports == [a.process, b.process]
+
+    m1 = a.model
+    con = a >> b
+
+    assert m1 is b.model
+
+    assert len(a.model.links()) == 1
+
+    assert con.units == [a, b]
+    assert con.source_ports == [b.out]
+    assert con.target_ports == [a.process]
+
+    comb = (a / b) >> c
+
+    assert len(a.model.links()) == 3
+    assert c.model == a.model
+    assert comb.units == [a, b, c]
+
+    dist = a | b & c
+
+    assert len(a.model.spaces()) == 2
+    assert dist.units == [a, b, c]
+
+
+    assert a | c
     with pytest.raises(IndexError):
-        u1 & u3
+        a & c
 
-    assert u2 & u3
+    assert b & c
     with pytest.raises(IndexError):
-        u2 | u3
+        b | c
 
-    assert len(u1.model.spaces()) == 2
+    assert len(a.model.spaces()) == 2
+
+    direct = c.out >> b.process
+
+    assert direct.model == c.model
+    assert len(c.model.links()) == 4
+    assert len(c.model.links(sources={c}, targets={b})) == 1

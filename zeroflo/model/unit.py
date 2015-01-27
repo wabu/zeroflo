@@ -1,7 +1,10 @@
+import asyncio
+
 from pyadds.annotate import Conotate, cached
 from pyadds.str import name_of
 
 from zeroflo.model import Builds
+from zeroflo import context
 
 
 class Unit(Builds):
@@ -20,7 +23,7 @@ class Unit(Builds):
 
     def __process__(self):
         while True:
-            port, load, tag = yield from recv(self)
+            port, load, tag = yield from self.recv(self)
             if port is None:
                 break
             yield from port(load, tag)
@@ -40,11 +43,22 @@ class Port(Builds):
         self.name = name
         self.definition = definition
 
+    @property
+    def model(self):
+        return self.unit.model
+
     def __bind_units__(self):
         return [self.unit]
 
     def __bind_ports__(self):
         return {'{}s'.format(self.__kind__): [self]}
+
+
+    def __call__(self, *args, **kws):
+        if asyncio.get_event_loop().is_running():
+            return self.definition(*args, **kws)
+        else:
+            context.get_control(self.unit.model).run(self, *args, **kws)
 
     def __str__(self):
         return '{}.{}'.format(self.unit, self.name)
@@ -63,9 +77,6 @@ class SourcePort(Port):
 class PortAnnotation(Conotate, cached):
     """
     decorator base to define ports for a unit
-    >>> class Foo(Unit):
-    ... @inport
-    ... def bar(self, data, tag):
     """
     __port__ = Port
 

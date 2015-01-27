@@ -8,11 +8,21 @@ class ModelBase:
     The models constructor may consume some options and they must support
     updates, incorporating another model into themselves.
     """
-    def update(self, other):
-        pass
+    def __init__(self):
+        self._units = []
+
+    def units(self):
+        return self._units
+
+    def __update__(self, other):
+        assert isinstance(other, ModelBase)
+        self._units.append(other._units)
+
+    def register(self, unit):
+        self._units.append(unit)
 
     def unregister(self, unit):
-        pass
+        self._units.remove(unit)
 
 
 class Builds:
@@ -26,8 +36,6 @@ class Builds:
     in. For example, a unit and it's ports are such objects, on which builders
     that link ports or distribute units are based upon. Moreover a builder
     can also be based on other builders or combinations thereof.
-
-    :see: zeroflo.model.links, zeroflo.model.spaces
     """
     def __init__(self, on):
         self.on = on
@@ -88,7 +96,7 @@ class Combine:
     def model(self, model):
         for base in self.bases:
             if base.model != model:
-                model.update(base.model)
+                model.__update__(base.model)
                 base.model = model
         self._model = model
 
@@ -113,8 +121,8 @@ class Series(Combine):
     last unit.
     """
     def __bind_ports__(self):
-        return {'targets': self.bases[0].__bind_ports__()['targets'],
-                'sources': self.bases[-1].__bind_ports__()['sources']}
+        return {'targets': self.bases[0].__bind_ports__().get('targets', []),
+                'sources': self.bases[-1].__bind_ports__().get('sources', [])}
 
 
 class Combines(Builds):

@@ -6,7 +6,7 @@ import pytest
 class Range(flo.Unit):
     @flo.outport
     def out(self):
-        """ outport geting a range of numbers """
+        """ outport getting a range of numbers """
 
     @flo.inport
     def process(self, n, tag):
@@ -21,7 +21,7 @@ class Cum(flo.Unit):
 
     @flo.outport
     def out(self):
-        """ outport geting cumulated items """
+        """ outport getting cumulated items """
 
     @flo.inport
     def process(self, i, tag):
@@ -48,6 +48,7 @@ def test_compat():
 
 def test_simple():
     pytest.skip('TODO new flo')
+
     flow = Range() >> Cum()
 
     items = list(flow.process(5))
@@ -86,4 +87,18 @@ def test_varz():
     rng & cum
 
     items = list(flow.process(5))
+    assert items == list(sum(range(i)) for i in range(5))
+
+def test_vars():
+    pytest.skip('TODO new flow')
+
+    rng = Range()
+    cum = Cum()
+
+    (rng >> cum,
+     rng & cum)
+
+    rng.process(5)
+    items = list(cum.out)
+
     assert items == list(sum(range(i)) for i in range(5))
