@@ -6,7 +6,7 @@ import pytest
 class Range(flo.Unit):
     @flo.outport
     def out(self):
-        """ outport getting a range of numbers """
+        """ out-port getting a range of numbers """
 
     @flo.inport
     def process(self, n, tag):
@@ -21,7 +21,7 @@ class Cum(flo.Unit):
 
     @flo.outport
     def out(self):
-        """ outport getting cumulated items """
+        """ out-port getting summed items """
 
     @flo.inport
     def process(self, i, tag):

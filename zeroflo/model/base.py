@@ -12,30 +12,36 @@ class Referrer:
     referrer object.
     """
     def __init__(self, model):
-        self.instance = model
+        self._instance = model
         model.refer(self)
+
+    def __instance__(self):
+        return self._instance
 
     def __getattr__(self, item):
         """ forward requests to the referred instance """
-        return getattr(self.instance, item)
+        if item.startswith('_'):
+            raise AttributeError('referrer %s has not attribute %s' %
+                                 (type(self._instance), item))
+        return getattr(self._instance, item)
 
     def __eq__(self, other):
         """ check for referred objects equality """
         if isinstance(other, Referrer):
-            return self.instance == other.instance
+            return self._instance == other._instance
         elif isinstance(other, ModelBase):
-            return self.instance == other
+            return self._instance == other
         else:
             return False
 
     def __hash__(self):
-        return hash(self.instance)
+        return hash(self._instance)
 
     def __str__(self):
-        return '*{}'.format(self.instance)
+        return '*{}'.format(self._instance)
 
     def __repr__(self):
-        return '*{!r}'.format(self.instance)
+        return '*{!r}'.format(self._instance)
 
 
 class Referred:
@@ -49,7 +55,7 @@ class Referred:
         """
         add a referrer to this instance
         """
-        ref.instance = self
+        ref._instance = self
         self._refers.add(ref)
 
     def replaces(self, other):
@@ -88,7 +94,8 @@ class ModelBase(Referred):
         """
         for u in units:
             if u.model != self:
-                self.unify(u.model.instance)
+                assert isinstance(u.model, Referrer)
+                self.unify(u.model.__instance__())
 
     def unregister(self, unit):
         """
@@ -172,8 +179,8 @@ class Combine:
     def model(self, model):
         for base in self.bases:
             if base.model != model:
-                model.unify(base.model.instance)
-                base.model = model
+                assert isinstance(base.model, Referrer)
+                model.unify(base.model.__instance__())
         self._model = model
 
     def __bind_units__(self):

@@ -56,7 +56,7 @@ def test_model(model, a, b):
     model.join(a, b)
     assert len(model.spaces()) == 1
 
-    assert model.instance == model
+    assert model._instance == model
     assert model != a
 
     assert 'unit-a' in str(model)
