@@ -17,7 +17,7 @@ class Units(ModelBase):
     def register(self, *units):
         super().register(*units)
         for u in units:
-            if u not in self:
+            if u not in self._units:
                 self._units.append(u)
 
     def unregister(self, unit):

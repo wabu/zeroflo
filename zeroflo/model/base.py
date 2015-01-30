@@ -94,7 +94,7 @@ class ModelBase(Referred):
         """
         called to unregister units within this model
         """
-        pass
+        del unit.model
 
 
 class Builder:

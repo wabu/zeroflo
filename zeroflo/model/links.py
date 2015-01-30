@@ -14,6 +14,12 @@ class Link:
     def __iter__(self):
         return iter((self.source, self.target, self.opts))
 
+    def __str__(self):
+        return '{}>>{}'.format(self.source, self.target)
+
+    def __repr__(self):
+        return '{!r}>>{!r}//{}'.format(self.source, self.target, self.opts)
+
 
 class Links(ModelBase):
     """

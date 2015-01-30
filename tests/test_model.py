@@ -20,34 +20,54 @@ class Simple(Unit):
 
 
 @pytest.fixture
+def model():
+    return context.mk_model()
+
+
+@pytest.fixture
 def a():
-    return Simple(name='a')
+    return Simple(name='unit-a')
 
 
 @pytest.fixture
 def b():
-    return Simple(name='b')
+    return Simple(name='unit-b')
 
 
 @pytest.fixture
 def c():
-    return Simple(name='c')
+    return Simple(name='unit-c')
 
 
-def test_model(a, b):
-    model = context.mk_model()
+@pytest.fixture
+def d():
+    return Simple(name='unit-d')
 
+
+def test_model(model, a, b):
     model.register(a, b)
+    assert len(model.units()) == 2
+    assert a in model.units()
+    assert b in model.units()
+
     assert a.model == model
     assert b.model == model
-
-    assert len(model.units()) == 2
 
     model.join(a, b)
     assert len(model.spaces()) == 1
 
+    assert model.instance == model
+    assert model != a
 
-def test_multi(a, b, c):
+    assert 'unit-a' in str(model)
+    assert 'unit-a' in repr(model)
+
+    model.unregister(b)
+    assert b not in model.units()
+    assert b.model != model
+
+
+def test_unify(a, b, c):
     m1 = context.mk_model()
     m2 = context.mk_model()
 
@@ -63,6 +83,75 @@ def test_multi(a, b, c):
 
     assert m1 == m2
     assert len(m2.units()) == 3
+
+
+def test_links(model, a, b, c):
+    model.register(a, b, c)
+
+    model.link(a.out, b.process)
+    assert len(model.links()) == 1
+    model.link(b.out, a.process)
+    assert len(model.links()) == 2
+    model.link(a.out, c.process, queue=42)
+    assert len(model.links()) == 3
+
+    model.unlink(b, a)
+    assert len(model.links()) == 2
+
+    # unlink non-exisiting
+    model.unlink(b, a)
+    assert len(model.links()) == 2
+
+    # double link
+    model.link(a.out, b.process)
+    assert len(model.links()) == 3
+    # double unlink
+    model.unlink(a, b)
+    assert len(model.links()) == 1
+
+    link, = model.links()
+    assert 'a.out' in str(link)
+    assert 'c.process' in repr(link)
+    assert '42' in repr(link)
+
+    model.unregister(c)
+    assert c not in model.units()
+    assert len(model.links()) == 0
+
+
+def test_spaces(model, a, b, c, d):
+    model.register(a, b, c, d)
+    model.join(a, b)
+    model.par(b, c)
+
+    assert len(model.spaces()) == 2
+
+    with pytest.raises(IndexError):
+        model.join(b, c)
+
+    with pytest.raises(IndexError):
+        model.par(a, b)
+
+    model.join(c, d)
+    model.par(a, d)
+    assert len(model.spaces()) == 2
+
+    model.unregister(c)
+    model.unregister(d)
+
+    assert len(model.spaces()) == 1
+
+    model.register(c, d)
+    model.join(c)
+    model.join(d)
+
+    model.join(a, c, d)
+    assert len(model.spaces()) == 1
+
+    space, = model.spaces()
+
+    assert 'unit-a' in str(space)
+    assert 'unit-d' in repr(space)
 
 
 def test_dsl(a, b, c):
@@ -96,7 +185,6 @@ def test_dsl(a, b, c):
 
     assert len(a.model.spaces()) == 2
     assert dist.units == [a, b, c]
-
 
     assert a | c
     with pytest.raises(IndexError):
