@@ -89,6 +89,7 @@ def test_varz():
     items = list(flow.process(5))
     assert items == list(sum(range(i)) for i in range(5))
 
+
 def test_vars():
     pytest.skip('TODO new flow')
 

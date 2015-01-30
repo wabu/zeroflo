@@ -42,7 +42,11 @@ class Spaces(ModelBase):
     def join(self, *units):
         spaces = self.spaces(set(units))
         # pars of these spaces
-        pars = set.union(*(self._pars[space] for space in spaces)) if spaces else set()
+        if spaces:
+            pars = set.union(*(self._pars[space] for space in spaces))
+        else:
+            pars = set()
+
         if len(pars.intersection(spaces)) > 1:
             raise IndexError('Cannot join units that were pared')
 

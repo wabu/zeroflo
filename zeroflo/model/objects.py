@@ -53,11 +53,11 @@ class Port(Builds):
     def __bind_ports__(self):
         return {'{}s'.format(self.__kind__): [self]}
 
-
     def __call__(self, *args, **kws):
         if asyncio.get_event_loop().is_running():
             return self.definition(*args, **kws)
         else:
+            # XXX implement this
             context.get_control(self.unit.model).run(self, *args, **kws)
 
     def __str__(self):
