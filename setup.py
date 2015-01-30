@@ -10,6 +10,9 @@ setup(
             'aiozmq>=0.5',
             'pyadds>=0.1',
             ],
+    test_requires = [
+            'pytest>=1.8',
+    ],
     package_data = {
         '': ['*.txt', '*.rst'],
     },

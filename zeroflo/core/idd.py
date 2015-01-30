@@ -1,4 +1,4 @@
-from pyadds.annotate import Named, delayed, cached
+from pyadds.annotate import Named, delayed, refers
 from pyadds.str import name_of
 
 from collections import namedtuple, Counter
@@ -117,7 +117,7 @@ class Idd:
             by = (by, ...)
         self.by = by
 
-    @cached 
+    @refers
     def path(self):
         refs = []
         ids = []

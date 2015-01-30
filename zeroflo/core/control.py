@@ -5,7 +5,7 @@ import atexit
 import os
 from asyncio import coroutine, Task
 
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 from pyadds.logging import log
 
 from . import resolve
@@ -117,11 +117,11 @@ class Control:
         yield from replay()
         #return asyncio.async(replay())
 
-    @cached
+    @refers
     def local(self):
         return None
 
-    @cached
+    @refers
     def tracker(self):
         return rpc.Tracker(self.tp.path)
 

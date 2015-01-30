@@ -2,7 +2,7 @@ from collections import Counter
 from asyncio import coroutine
 
 from pyadds.str import name_of
-from pyadds.annotate import Conotate, RefDescr, Get
+from pyadds.annotate import Conotate, RefDescr, Cache
 
 from .dsl import DSLMixin, UnitsDSL
 
@@ -63,7 +63,7 @@ class InPort(Port):
     __kind__ = 'target'
 
 
-class PortDef(Conotate, RefDescr, Get):
+class PortDef(Conotate, RefDescr, Cache):
     __port__ = None
 
     def __default__(self, unit):

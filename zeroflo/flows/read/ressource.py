@@ -1,4 +1,4 @@
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 from ...ext.params import param, Paramed
 
 import pandas as pd
@@ -160,7 +160,7 @@ class LocateByTime():
         self.kws = kws
         self.tz = tz
 
-    @cached
+    @refers
     def convert(self):
         kws = self.kws
         format = self.format

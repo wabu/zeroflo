@@ -17,7 +17,7 @@ class RemoveNullBytes(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        yield from data.replace(self.null, self.replace) >> tag >> self.out
+        yield from data.replaces(self.null, self.replace) >> tag >> self.out
 
 class Chunker(Paramed, Unit):
     @param

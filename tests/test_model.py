@@ -164,10 +164,7 @@ def test_dsl(a, b, c):
     assert both.source_ports == [a.out, b.out]
     assert both.target_ports == [a.process, b.process]
 
-    m1 = a.model
     con = a >> b
-
-    assert m1 == b.model
 
     assert len(a.model.links()) == 1
 

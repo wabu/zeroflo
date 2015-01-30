@@ -5,7 +5,7 @@ from collections import Counter
 
 from .zmqtools import create_zmq_stream
 
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 from pyadds.logging import log, logging
 
 @log
@@ -96,7 +96,7 @@ class Master(Track):
                 aiozmq.zmq.DEALER, bind=self.address)
         return asyncio.async(self.loop())
 
-    @cached
+    @refers
     def change(self):
         condition = self.condition
         counter = self.counter
@@ -148,7 +148,7 @@ class Master(Track):
             return not any(counter[item] for item in items)
         return predicate
 
-    @cached
+    @refers
     def condition(self):
         return asyncio.Condition()
 

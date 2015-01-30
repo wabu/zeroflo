@@ -56,7 +56,7 @@ class UseUnits(Base):
         return {'units': self.units}
 
     def __getattr__(self, name):
-        names = {name, name.replace('_', '-')}
+        names = {name, name.replaces('_', '-')}
         sel = {unit for unit in self.units if unit.name in names}
         if not sel:
             raise AttributeError('no unit named {} found'.format(name))

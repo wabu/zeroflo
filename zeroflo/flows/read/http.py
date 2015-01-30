@@ -1,7 +1,7 @@
 from .ressource import Ressource, Directory, Stats
 from ...ext.params import param
 
-from pyadds.annotate import cached, delayed
+from pyadds.annotate import refers, delayed
 from pyadds.logging import log
 
 import pandas as pd
@@ -27,7 +27,7 @@ class HTTPConnection:
         return (self.rqs.pop('connector', None)
                 or aiohttp.TCPConnector(loop=asyncio.get_event_loop(), **self.connect))
 
-    @cached
+    @refers
     def methods(self):
         return {}
 

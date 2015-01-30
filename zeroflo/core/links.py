@@ -5,7 +5,7 @@ import aiozmq
 import zmq
 from asyncio import coroutine
 
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 from pyadds import spawn
 from pyadds.logging import log, logging
 
@@ -162,7 +162,7 @@ class ZmqChan(Chan):
 class ZmqIn(InChan, ZmqChan):
     __stream_kind__ = 'bind'
 
-    @cached
+    @refers
     def fetch(self):
         return self.stream.pull
 
@@ -170,7 +170,7 @@ class ZmqIn(InChan, ZmqChan):
 class ZmqOut(OutChan, ZmqChan):
     __stream_kind__ = 'connect'
 
-    @cached
+    @refers
     def deliver(self):
         return self.stream.push
 

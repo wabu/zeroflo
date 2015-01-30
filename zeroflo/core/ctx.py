@@ -1,6 +1,6 @@
 from .topology import Topology
 from .control import Control
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 
 import logging
 from functools import wraps
@@ -67,7 +67,7 @@ class Context:
         self.control.register(unit)
         return u
 
-    @cached
+    @refers
     def spawner(self):
         spawner = spawn.get_spawner('forkserver')
         spawner.add_setup(self.setups)

@@ -26,7 +26,7 @@ import asyncio
 from asyncio import coroutine
 from ..core.packet import Tag
 from ..core.unit import inport
-from pyadds.annotate import Annotate, ObjDescr, Get
+from pyadds.annotate import Annotate, ObjDescr, Cache
 
 from pyadds.logging import log
 
@@ -95,7 +95,7 @@ class Combiner:
                 for key, slot in sorted(self.slots.items())))
 
 
-class combine(Annotate, ObjDescr, Get):
+class combine(Annotate, ObjDescr, Cache):
     def __default__(self, obj):
         Combiner.logger.debug('combine for %s [%s]', self.name, self.definition)
         return Combiner(obj, self.definition)

@@ -1,5 +1,5 @@
 from pyadds.meta import ops
-from pyadds.annotate import cached
+from pyadds.annotate import refers
 
 from .topology import Topology
 
@@ -29,7 +29,7 @@ class FloDSL:
         return self.units[-1]
 
     def __getattr__(self, name):
-        names = {name, name.replace('_', '-')}
+        names = {name, name.replaces('_', '-')}
         sel = {unit for unit in self.units if unit.name in names}
         if not sel:
             raise AttributeError('no unit named {} found'.format(name))
@@ -101,7 +101,7 @@ DSLMixin = ops.autowraped_ops(FloDSL, by='dsl')
 
 
 class UnitDSL(DSLMixin):
-    @cached
+    @refers
     def topology(self):
         top = Topology()
         top.register(self)

@@ -3,7 +3,7 @@ from collections import namedtuple
 import asyncio
 from asyncio import coroutine
 
-from pyadds.annotate import cached, delayed, Conotate
+from pyadds.annotate import refers, delayed, Conotate
 from pyadds.str import name_of
 from pyadds.logging import log
 
@@ -28,7 +28,7 @@ class Unit:
     def __teardown__(self):
         pass
 
-    @cached
+    @refers
     def ports(self):
         """ports of the unit"""
         return list(unbound.iter(self, bind=True))
@@ -141,7 +141,7 @@ class Port:
         self.definition = definition
         self.hints = hints
 
-    @cached
+    @refers
     def method(self):
         return self.definition.__get__(self.unit)
 
@@ -228,7 +228,7 @@ class Port:
 class InPort(Port):
     __kind__ = 'target'
 
-    @cached
+    @refers
     def handle(self):
         return self.method
 
@@ -237,7 +237,7 @@ class InPort(Port):
 class OutPort(Port):
     __kind__ = 'source'
 
-    @cached
+    @refers
     def channels(self):
         return []
 
@@ -264,7 +264,7 @@ class OutPort(Port):
         tp.unregister(yld)
 
 
-class unbound(Conotate, cached):
+class unbound(Conotate, refers):
     __port__ = None
     hints = {'sync': Sync('unit', 'any')}
 
@@ -309,7 +309,7 @@ class Parts:
         yield from self.out
 
 
-class part(cached):
+class part(refers):
     pass
 
 
