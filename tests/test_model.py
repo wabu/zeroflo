@@ -1,6 +1,6 @@
 import pytest
 
-from zeroflo.model.unit import Unit, inport, outport
+from zeroflo.model.objects import Unit, inport, outport
 from zeroflo import context
 
 

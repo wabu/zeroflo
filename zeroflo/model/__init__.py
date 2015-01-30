@@ -2,7 +2,8 @@ from pyadds.meta import ops
 from pyadds.cooptypes import Co
 from pyadds.annotate import delayed
 
-from zeroflo.model.base import Combines, Units
+from zeroflo.model.base import Combines
+from zeroflo.model.units import Units
 from zeroflo.model.links import Links, BuildLinks
 from zeroflo.model.spaces import Spaces, BuildSpaces
 

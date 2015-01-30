@@ -1,36 +1,30 @@
+import weakref
+
 from pyadds.meta import ops
 
 
-class ModelBase:
-    def __init__(self):
-        self._refers = set()
+class Referrer:
+    """
+    Multiple referrer objects refer to referred object, so that the referred
+    instance can be replaced by an updated one for all referrers
 
-    def __refer__(self, ref):
-        self._refers.add(ref)
-        ref.instance = self
-
-    def __update__(self, other):
-        assert isinstance(other, ModelBase)
-        for ref in other._refers:
-            self.__refer__(ref)
-
-    def unregister(self, unit):
-        pass
-
-
-class ModelRef:
+    The public interface of the referred instance is also available on the
+    referrer object.
+    """
     def __init__(self, model):
         self.instance = model
-        model.__refer__(self)
+        model.refer(self)
 
     def __getattr__(self, item):
+        """ forward requests to the referred instance """
         return getattr(self.instance, item)
 
     def __eq__(self, other):
-        if isinstance(other, ModelRef):
-            return self.instance is other.instance
+        """ check for referred objects equality """
+        if isinstance(other, Referrer):
+            return self.instance == other.instance
         elif isinstance(other, ModelBase):
-            return self.instance is other
+            return self.instance == other
         else:
             return False
 
@@ -44,42 +38,63 @@ class ModelRef:
         return '*{!r}'.format(self.instance)
 
 
-class Units(ModelBase):
+class Referred:
+    """
+    object being referred indirectly so the referred instance can be replaced.
+    """
+    def __init__(self):
+        self._refers = weakref.WeakSet()
+
+    def refer(self, ref):
+        """
+        add a referrer to this instance
+        """
+        ref.instance = self
+        self._refers.add(ref)
+
+    def replaces(self, other):
+        """
+        Let this instance replace another instance for all references to the
+        other instance
+        :param other: another Referred instance
+        :returns self:
+        """
+        assert isinstance(other, Referred)
+        for ref in other._refers:
+            self.refer(ref)
+        return self
+
+
+class ModelBase(Referred):
     """
     ModelBase it the base for cooperative model components of the flow.
 
-    The models constructor may consume some options and they must support
-    updates, incorporating another model into themselves.
+    Model components must support `unify`, and may hook into the
+    `register`/`unregistered` methods
     """
-    def __init__(self):
-        super().__init__()
-        self._units = []
 
-    def units(self):
-        return self._units
-
-    def __update__(self, other):
-        assert isinstance(other, Units)
-        super().__update__(other)
-        self._units.extend(other._units)
+    def unify(self, other):
+        """
+        called to unify with another model components, updating itself with the
+        content of the other model
+        :param other: other model instance to unify with
+        :returns None:
+        """
+        self.replaces(other)
 
     def register(self, *units):
+        """
+        called to register units within this model
+        """
         for u in units:
             if u.model != self:
-                self.__update__(u.model.instance)
-            else:
-                self._units.append(u)
+                self.unify(u.model.instance)
 
     def unregister(self, unit):
-        super().unregister(unit)
-        self._units.remove(unit)
-
-    def __str__(self):
-        return '|{}|'.format(','.join(map(str, self._units)))
-
-    def __repr__(self):
-        return '|{:x}:{}|'.format(id(self),
-                                  ','.join(map(str, self._units)))
+        """
+        called to unregister units within this model
+        """
+        pass
 
 
 class Builder:
@@ -95,8 +110,9 @@ class Builder:
     can also be based on other builders or combinations thereof.
     """
     def __init__(self, on):
-        assert isinstance(on.model, ModelRef)
         self.on = on
+
+        assert isinstance(on.model, Referrer)
         self.model = on.model
 
     def __combine__(*objs):
@@ -118,10 +134,12 @@ class RequireUnits(Builder):
 
     @property
     def left(self):
+        """ leftmost of the units """
         return self.units[0]
 
     @property
     def right(self):
+        """ rightmost of the units """
         return self.units[-1]
 
 
@@ -154,7 +172,7 @@ class Combine:
     def model(self, model):
         for base in self.bases:
             if base.model != model:
-                model.__update__(base.model.instance)
+                model.unify(base.model.instance)
                 base.model = model
         self._model = model
 

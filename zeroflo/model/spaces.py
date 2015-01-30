@@ -6,6 +6,9 @@ from zeroflo.model.base import RequireUnits, ModelBase
 
 
 class Space:
+    """
+    information about a space for units
+    """
     def __init__(self, units=None):
         self.units = units or set()
 
@@ -17,6 +20,9 @@ class Space:
 
 
 class Spaces(ModelBase):
+    """
+    models the spacing of units across different processes
+    """
     def __init__(self):
         super().__init__()
         # {unit: space}
@@ -94,14 +100,17 @@ class Spaces(ModelBase):
                     self._pars[par].remove(space)
             spaces.remove(space)
 
-    def __update__(self, other):
+    def unify(self, other):
         assert isinstance(other, Spaces)
-        super().__update__(other)
+        super().unify(other)
         self._spaces.extend(other._spaces)
         self._pars.update(other._pars)
 
 
 class BuildSpaces(RequireUnits):
+    """
+    builds spacings for units using `a & b | c & d` syntax
+    """
     @ops.opsame
     def __and__(self, other: RequireUnits):
         res = self.__combine__(other)

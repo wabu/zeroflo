@@ -5,6 +5,7 @@ from zeroflo.model.base import RequirePorts, ModelBase
 
 
 class Link:
+    """ single link between a source and an target port """
     def __init__(self, source, target, **opts):
         self.source = source
         self.target = target
@@ -15,6 +16,9 @@ class Link:
 
 
 class Links(ModelBase):
+    """
+    models links between units
+    """
     def __init__(self):
         super().__init__()
         self._links = []
@@ -41,13 +45,16 @@ class Links(ModelBase):
             self.unlink(link.source, link.target)
         super().unregister(unit)
 
-    def __update__(self, other):
+    def unify(self, other):
         assert isinstance(other, Links)
-        super().__update__(other)
+        super().unify(other)
         self._links += other._links
 
 
 class BuildLinks(RequirePorts):
+    """
+    builds up links between ports using the `a >> b` syntax
+    """
     @ops.opsame
     def __rshift__(self, other: RequirePorts):
         res = self.__series__(other)
