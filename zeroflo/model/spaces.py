@@ -96,7 +96,6 @@ class Spaces(ModelBase):
 
     def __update__(self, other):
         assert isinstance(other, Spaces)
-
         super().__update__(other)
         self._spaces.extend(other._spaces)
         self._pars.update(other._pars)

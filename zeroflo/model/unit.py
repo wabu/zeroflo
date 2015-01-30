@@ -1,6 +1,6 @@
 import asyncio
 
-from pyadds.annotate import Conotate, cached
+from pyadds.annotate import Conotate, refers
 from pyadds.str import name_of
 
 from zeroflo.model import Builds
@@ -74,7 +74,7 @@ class SourcePort(Port):
     __kind__ = 'source'
 
 
-class PortAnnotation(Conotate, cached):
+class PortAnnotation(Conotate, refers):
     """
     decorator base to define ports for a unit
     """

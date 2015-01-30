@@ -2,6 +2,49 @@ from pyadds.meta import ops
 
 
 class ModelBase:
+    def __init__(self):
+        self._refers = set()
+
+    def __refer__(self, ref):
+        self._refers.add(ref)
+        ref.instance = self
+
+    def __update__(self, other):
+        assert isinstance(other, ModelBase)
+        for ref in other._refers:
+            self.__refer__(ref)
+
+    def unregister(self, unit):
+        pass
+
+
+class ModelRef:
+    def __init__(self, model):
+        self.instance = model
+        model.__refer__(self)
+
+    def __getattr__(self, item):
+        return getattr(self.instance, item)
+
+    def __eq__(self, other):
+        if isinstance(other, ModelRef):
+            return self.instance is other.instance
+        elif isinstance(other, ModelBase):
+            return self.instance is other
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.instance)
+
+    def __str__(self):
+        return '*{}'.format(self.instance)
+
+    def __repr__(self):
+        return '*{!r}'.format(self.instance)
+
+
+class Units(ModelBase):
     """
     ModelBase it the base for cooperative model components of the flow.
 
@@ -9,23 +52,37 @@ class ModelBase:
     updates, incorporating another model into themselves.
     """
     def __init__(self):
+        super().__init__()
         self._units = []
 
     def units(self):
         return self._units
 
     def __update__(self, other):
-        assert isinstance(other, ModelBase)
-        self._units.append(other._units)
+        assert isinstance(other, Units)
+        super().__update__(other)
+        self._units.extend(other._units)
 
-    def register(self, unit):
-        self._units.append(unit)
+    def register(self, *units):
+        for u in units:
+            if u.model != self:
+                self.__update__(u.model.instance)
+            else:
+                self._units.append(u)
 
     def unregister(self, unit):
+        super().unregister(unit)
         self._units.remove(unit)
 
+    def __str__(self):
+        return '|{}|'.format(','.join(map(str, self._units)))
 
-class Builds:
+    def __repr__(self):
+        return '|{:x}:{}|'.format(id(self),
+                                  ','.join(map(str, self._units)))
+
+
+class Builder:
     """
     This is a base class for components that interact with the model.
     Different builder components manage different aspects of the flow
@@ -38,6 +95,7 @@ class Builds:
     can also be based on other builders or combinations thereof.
     """
     def __init__(self, on):
+        assert isinstance(on.model, ModelRef)
         self.on = on
         self.model = on.model
 
@@ -50,7 +108,7 @@ class Builds:
         return type(self)(Series(self.model, *[o.on for o in objs]))
 
 
-class RequireUnits(Builds):
+class RequireUnits(Builder):
     """
     Ensures that the build component has units to work on.
     """
@@ -67,7 +125,7 @@ class RequireUnits(Builds):
         return self.units[-1]
 
 
-class RequirePorts(Builds):
+class RequirePorts(Builder):
     """
     Ensures that the build component has units to work on.
     """
@@ -96,7 +154,7 @@ class Combine:
     def model(self, model):
         for base in self.bases:
             if base.model != model:
-                model.__update__(base.model)
+                model.__update__(base.model.instance)
                 base.model = model
         self._model = model
 
@@ -125,11 +183,11 @@ class Series(Combine):
                 'sources': self.bases[-1].__bind_ports__().get('sources', [])}
 
 
-class Combines(Builds):
+class Combines(Builder):
     """
     Combine this build component with another into a single one, operating
     on both of the original components.
     """
     @ops.opsame
-    def __truediv__(self, other: Builds):
+    def __truediv__(self, other: Builder):
         return self.__combine__(other)
