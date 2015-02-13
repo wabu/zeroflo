@@ -84,13 +84,18 @@ class Fields(Paramed, Unit):
     def seperator(self, val='\t'):
         return val
 
+    @param
+    def limit(self, val=-1):
+        return val
+
     @outport
     def out(): pass
 
     @inport
     def process(self, data, tag):
         sep = self.seperator
-        yield from [l.split(sep) for l in data] >> tag >> self.out
+        lim = self.limit
+        yield from [l.split(sep, lim) for l in data] >> tag >> self.out
 
 
 @log

@@ -30,6 +30,10 @@ class Watch(Paramed, Unit):
     def skip_num(self, value=240):
         return value
 
+    @param
+    def num_try(self, value=3):
+        return value
+
     @inport
     def process(self, start, tag):
         tz = tag.tz
@@ -73,6 +77,7 @@ class Watch(Paramed, Unit):
         last = None
         before = None
         accesses = self.accesses
+
         while not time >= pd.Timestamp(end, tz=time.tz):
             avails = [a.available(time, **tag) for a in accesses]
             avail = min(avails)
@@ -85,38 +90,45 @@ class Watch(Paramed, Unit):
                 now = pd.Timestamp('now', tz=avail.tz)
 
             stat = None
-            for avail, access in zip(avails, accesses):
-                if avail <= now:
-                    s = (yield from access.stat(time, **tag))
-                    if s:
-                        stat = s
-                        if stat[1].begin == pd.Timestamp(time, tz=avail.tz):
-                            break
+            for n in range(self.num_try):
+                try:
+                    for avail, access in zip(avails, accesses):
+                        if avail <= now:
+                            s = (yield from access.stat(time, **tag))
+                            if s:
+                                stat = s
+                                if stat[1].begin == pd.Timestamp(time,
+                                                                 tz=avail.tz):
+                                    break
 
-            if stat:
-                access, loc, res = stat
-                self.__log.debug('%s-access is available [%s]',
-                                 access.name, time)
-            else:
-                self.__log.debug('waiting for all %d accesses [%s]',
-                                 len(accesses), time)
-                done, pending = yield from asyncio.wait(
-                    [a.get(time, **tag) for a in accesses],
-                    return_when=asyncio.FIRST_COMPLETED)
-                for p in pending:
-                    p.cancel()
+                    if stat:
+                        access, loc, res = stat
+                        self.__log.debug('%s-access is available [%s]',
+                                         access.name, time)
+                    else:
+                        self.__log.debug('waiting for all %d accesses [%s]',
+                                         len(accesses), time)
+                        done, pending = yield from asyncio.wait(
+                            [a.get(time, **tag) for a in accesses],
+                            return_when=asyncio.FIRST_COMPLETED)
+                        for p in pending:
+                            p.cancel()
 
-                done = {access: (loc, res)
-                        for access, loc, res in [r.result() for r in done]}
-                for access in accesses:
-                    if access in done:
-                        loc, res = done[access]
-                        break
-                else:
-                    assert None, "one of the accesses has to be in done"
+                        done = {access: (loc, res)
+                                for access, loc, res in [r.result()
+                                                         for r in done]}
+                        for access in accesses:
+                            if access in done:
+                                loc, res = done[access]
+                                break
+                        else:
+                            assert None, "one of the accesses has to be in done"
 
-                self.__log.debug('finished with %s-access (%d)',
-                                 access.name, len(done))
+                        self.__log.debug('finished with %s-access (%d)',
+                                         access.name, len(done))
+                except OSError:
+                    self.__log.warn('error when getting ressource (%d time)',
+                                    n+1, exc_info=True)
 
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
@@ -217,6 +229,11 @@ class Reader(Paramed, Unit):
                     size += len(new)
                 except asyncio.TimeoutError:
                     assert not eof, 'eof while read was sheduled'
+                    times += 1
+                    break
+                except Exception as e:
+                    assert not eof, 'eof while read was sheduled'
+                    self.__log.warn("%s when reading data", e, exc_info=True)
                     times += 1
                     break
 
