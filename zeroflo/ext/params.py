@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _size_suffixes = ['k', 'm', 'g', 't', 'p']
-class param(Cached, ObjDescr, Get, Set):
+class param(Defaults, ObjDescr, Cache):
     @staticmethod
     def sizeof(size):
         try:
