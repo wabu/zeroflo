@@ -8,6 +8,7 @@ from asyncio import coroutine, Task
 
 from pyadds.annotate import cached, delayed
 from pyadds.logging import log
+from pyadds.forkbug import maybug
 
 from . import resolve
 from . import rpc
@@ -33,7 +34,8 @@ class Process:
         try:
             unit = self.units[unit.id.idd]
         except KeyError:
-            yield from unit.__setup__()
+            with maybug():
+                yield from unit.__setup__()
             self.units[unit.id.idd] = unit
 
         for l in outs:
