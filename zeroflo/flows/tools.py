@@ -69,7 +69,7 @@ class Status(Paramed, Unit):
         try:
             length = len(data)
         except Exception:
-            pass
+            length = None
         print(self.format.format(__data__=data,
                                  __len__=length,
                                  __tag__=tag,
@@ -78,11 +78,14 @@ class Status(Paramed, Unit):
         yield from []
 
 
+def ensure(val, typ):
+    return val if isinstance(val, typ) else typ([val])
+
+
 class match(Unit):
     def __init__(self, **matches):
         super().__init__()
-        self.matches = {k: v if isinstance(v, set) else {v}
-                        for k,v in matches.items()}
+        self.matches = {k: ensure(v, set) for k,v in matches.items()}
 
     @outport
     def out(): pass
@@ -91,6 +94,43 @@ class match(Unit):
     def process(self, data, tag):
         if all(tag[key] in val for key,val in self.matches.items()):
             yield from data >> tag >> self.out
+
+
+class Categorize(Paramed, Unit):
+    @param
+    def tag(self, val='category'):
+        return val
+
+    @param
+    def rules(self, val):
+        return [(cat, [{k: ensure(v, set) for k,v in rule.items()}
+                       for rule in ensure(rules, list)])
+                for cat, rules in val.items()]
+
+    @param
+    def default(self, val=None):
+        return val
+
+    @outport
+    def out(): pass
+
+    @outport
+    def non(): pass
+
+    @inport
+    def process(self, data, tag):
+        for cat, rules in self.rules:
+            if any(all(tag[key] in val for key, val in rule.items())
+                   for rule in rules):
+                break
+        else:
+            cat = self.default
+
+        if cat is None:
+            yield from data >> tag >> self.non
+        else:
+            yield from data >> tag.add(**{self.tag: cat}) >> self.out
+
 
 class forward(Unit):
     @outport

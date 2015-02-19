@@ -12,7 +12,7 @@ class Split(Unit):
     def __setup__(self):
         self.pkid = 0
 
-    @inport 
+    @inport
     def process(self, data, tag):
         pkid = self.pkid
         yield from asyncio.gather(data >> tag.add(pkid=pkid) >> self.out,
@@ -27,6 +27,7 @@ class Union(Unit):
 
     @coroutine
     def __setup__(self):
+        self.last = None
         self.pkids = []
         self.loads = {}
 
@@ -36,6 +37,7 @@ class Union(Unit):
             pkid = self.pkids.pop(0)
             load = self.loads.pop(pkid)
             self.__log.debug('putting out %s', pkid)
+            self.last = pkid
             yield from load >> self.out
 
     @inport
@@ -46,9 +48,8 @@ class Union(Unit):
     def process(self, data, tag):
         if data is not None:
             pkid = tag.pop('pkid')
-            self.__log.debug('got data for %s -> %s | %s', pkid, 
+            self.__log.debug('got data for %s -> %s | %s', pkid,
                     self.pkids and self.pkids[0], self.loads.keys())
             self.loads[pkid] = data >> tag
 
         yield from self.put()
-        

@@ -109,6 +109,10 @@ class Sort(Unit):
 
     @inport
     def process(self, lines, tag):
+        if tag.sorted:
+            yield from lines >> tag >> self.out
+            return
+
         new = len(lines)
         self.buf.extend(lines)
         tot = len(self.buf)
@@ -141,6 +145,43 @@ class Filter(Paramed, Unit):
         yield from filt >> tag.add(**self.tags) >> self.out
 
 
+class Matcher(Paramed, Unit):
+    @param
+    def tag(self, val='match'):
+        return val
+
+    @param
+    def default(self, val=None):
+        return val
+
+    @param
+    def rules(self, val):
+        return {k: re.compile(pat) for k, pat in val.items()}
+
+    @outport
+    def out(): pass
+
+    @outport
+    def non(): pass
+
+    @inport
+    def process(self, lines, tag):
+        outs = {k: [] for k in self.rules.keys()}
+        outs[self.default] = []
+        for line in lines:
+            for k, pat in self.rules.items():
+                if pat.search(line):
+                    break
+            else:
+                k = self.default
+            outs[k].append(line)
+
+        yield from asyncio.gather(*[
+            (ls >> tag.add(**{self.tag: out})
+                >> (self.non if out is None else self.out))
+            for out, ls in outs.items()])
+
+
 class Join(Paramed, Unit):
     @param
     def seperator(self, val='\n'):
@@ -152,4 +193,3 @@ class Join(Paramed, Unit):
     @inport
     def process(self, data, tag):
         yield from self.seperator.join(data) >> tag >> self.out
-
