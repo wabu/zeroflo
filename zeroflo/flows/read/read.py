@@ -57,7 +57,7 @@ class Watch(Paramed, Unit):
             else:
                 rel = pd.datetools.to_offset(tag.on)
             val = rel.nanos
-            off = start.utcoffset()
+            off = start.utcoffset() or pd.datetools.timedelta(0)
             start = pd.Timestamp((start + off).value
                                  // val * val, tz=start.tz) - off
 
