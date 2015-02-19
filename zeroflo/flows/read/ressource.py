@@ -48,7 +48,10 @@ class Ressource:
     @coroutine
     def size(self):
         """ ressource size """
-        return (yield from self.stat).size
+        stat = yield from self.stat
+        if not stat:
+            raise OSError('Ressource not available')
+        return stat.size
 
     @property
     @coroutine

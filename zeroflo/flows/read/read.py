@@ -57,7 +57,9 @@ class Watch(Paramed, Unit):
             else:
                 rel = pd.datetools.to_offset(tag.on)
             val = rel.nanos
-            start = pd.Timestamp(start.value // val * val, tz=start.tz)
+            off = start.utcoffset()
+            start = pd.Timestamp((start + off).value
+                                 // val * val, tz=start.tz) - off
 
         tz = start.tz
         time = pd.Timestamp(start, tz=tz)
@@ -280,13 +282,10 @@ class Reader(Paramed, Unit):
 
         end = time.time()
 
-        size = yield from resource.size
-        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d/%d]',
+        self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d]',
                          path, tag.begin,
                          first-start, end-start,
-                         chunks, waits, conts, times, offset, size)
-        # XXX not usable with decompression
-        # assert size == offset, 'fetched data size different from size info'
+                         chunks, waits, conts, times, offset)
 
 
 class ListFiles(Paramed, Unit):
