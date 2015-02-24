@@ -265,12 +265,15 @@ class Access(Paramed):
             wait = (now - avail).total_seconds()
 
             if now > avail + self.skip_after:
+                self.__log.debug('skip for %s after %s',
+                                 self, avail+self.skip_after)
                 skip_loc = loc
                 for k in range(1, self.skip_num+1):
                     skip_loc = self.locate.location(skip_loc.end, **adds)
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
-                    if stat:
+                    self.__log.debug('skip for {} to {}', self, skip_loc)
+                    if skip_stat:
                         self.__log.warning(
                             'skipped %d to %s (%s)',
                             k,
