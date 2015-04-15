@@ -108,7 +108,7 @@ class Watch(Paramed, Unit):
                         self.__log.debug('%s-access is available [%s]',
                                          access.name, time)
                     else:
-                        self.__log.debug('waiting for all %d accesses [%s]',
+                        self.__log.debug('waiting for all (%d) accesses [%s]',
                                          len(accesses), time)
                         done, pending = yield from asyncio.wait(
                             [a.get(time, **tag) for a in accesses],
@@ -128,9 +128,10 @@ class Watch(Paramed, Unit):
 
                         self.__log.debug('finished with %s-access (%d)',
                                          access.name, len(done))
+                    break
                 except OSError:
-                    self.__log.warn('error when getting ressource (%d time)',
-                                    n+1, exc_info=True)
+                    self.__log.warning('error when getting ressource (%d time)',
+                                       n+1, exc_info=True)
 
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
@@ -206,7 +207,15 @@ class Reader(Paramed, Unit):
         next = None
 
         while not done:
-            chunk = yield from (next or reader.read(chunksize))
+            try:
+                chunk = yield from (next or reader.read(chunksize))
+            except OSError as e:
+                self.__log.warning('%s while reading %s:%d',
+                                   e, path, offset, exc_info=True)
+                next = None
+                yield from asyncio.sleep(2)
+                reader = yield from resource.reader(offset=offset)
+                chunk = yield from reader.read(chunksize)
             size = len(chunk)
 
             eof = reader.at_eof()

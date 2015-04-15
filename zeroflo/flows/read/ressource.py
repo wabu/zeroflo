@@ -126,12 +126,18 @@ class Directory(Ressource):
         return (yield from glob(self))
 
     @coroutine
-    def await(self, name, poll=1.0):
+    def await(self, name, poll=1.0, timeout=None):
         """ wait until the give ressource is created in this directory """
-        ressource = self.open(name)
-        while not (yield from ressource.exists):
-            yield from asyncio.sleep(poll)
-        return ressource
+        @coroutine
+        def do():
+            ressource = self.open(name)
+            while not (yield from ressource.exists):
+                yield from asyncio.sleep(poll)
+            return ressource
+        if timeout:
+            return (yield from asyncio.wait_for(do(), timeout))
+        else:
+            return (yield from do())
 
     def open(self, name):
         """ return Ressource object for ressource in this directory """
@@ -216,8 +222,8 @@ class Access(Paramed):
         return pd.datetools.to_offset(value)
 
     @param
-    def skip_num(self, value=240):
-        return value
+    def skip_time(self, value='8h'):
+        return pd.datetools.to_offset(value)
 
     @param
     def stable(self, value='30s'):
@@ -268,11 +274,17 @@ class Access(Paramed):
                 self.__log.debug('skip for %s after %s',
                                  self, avail+self.skip_after)
                 skip_loc = loc
-                for k in range(1, self.skip_num+1):
+                k = 0
+                while True:
                     skip_loc = self.locate.location(skip_loc.end, **adds)
+                    # TODO wait for available ...
+                    if skip_loc.begin > loc.begin + self.skip_time:
+                        self.__log.warning('%s giving up finding files ...')
+                        break
+                    k += 1
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
-                    self.__log.debug('skip for {} to {}', self, skip_loc)
+                    self.__log.debug('skip for %s to %s', self, skip_loc)
                     if skip_stat:
                         self.__log.warning(
                             'skipped %d to %s (%s)',
