@@ -1,5 +1,6 @@
 from zeroflo import *
 from pyadds.logging import *
+from collections import defaultdict
 
 class Split(Unit):
     @outport
@@ -27,18 +28,21 @@ class Union(Unit):
 
     @coroutine
     def __setup__(self):
-        self.last = None
         self.pkids = []
-        self.loads = {}
+        self.loads = defaultdict(list)
 
     @coroutine
     def put(self):
-        while self.pkids and self.pkids[0] in self.loads:
-            pkid = self.pkids.pop(0)
-            load = self.loads.pop(pkid)
-            self.__log.debug('putting out %s', pkid)
-            self.last = pkid
-            yield from load >> self.out
+        while self.pkids and self.loads[self.pkids[0]]:
+            pkid = self.pkids[0]
+            loads = self.loads[pkid]
+            while loads:
+                load = loads.pop(0)
+                yield from load >> self.out
+                if load[1].flush:
+                    assert not loads, 'more after flush, check your topology'
+                    self.pkids.pop(0)
+                    self.loads.pop(pkid)
 
     @inport
     def ids(self, pkid, tag):
@@ -48,8 +52,9 @@ class Union(Unit):
     def process(self, data, tag):
         if data is not None:
             pkid = tag.pop('pkid')
-            self.__log.debug('got data for %s -> %s | %s', pkid,
-                    self.pkids and self.pkids[0], self.loads.keys())
-            self.loads[pkid] = data >> tag
+            self.__log.debug('got data for %s -> %s | %s',
+                             pkid,
+                             self.pkids and self.pkids[0], self.loads.keys())
+            self.loads[pkid].append(data >> tag)
 
         yield from self.put()
