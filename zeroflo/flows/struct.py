@@ -23,6 +23,10 @@ class Split(Unit):
 
 @log
 class Union(Unit):
+    @param
+    def autoflush(self, value=True):
+        return value
+
     @outport
     def out(): pass
 
@@ -39,7 +43,7 @@ class Union(Unit):
             while loads:
                 load = loads.pop(0)
                 yield from load >> self.out
-                if load[1].flush:
+                if self.autoflush or load[1].flush:
                     assert not loads, 'more after flush, check your topology'
                     self.pkids.pop(0)
                     self.loads.pop(pkid)
