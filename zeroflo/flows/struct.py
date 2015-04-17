@@ -22,7 +22,7 @@ class Split(Unit):
 
 
 @log
-class Union(Unit):
+class Union(Paramed, Unit):
     @param
     def autoflush(self, value=True):
         return value
