@@ -279,12 +279,13 @@ class Access(Paramed):
                     skip_loc = self.locate.location(skip_loc.end, **adds)
                     # TODO wait for available ...
                     if skip_loc.begin > loc.begin + self.skip_time:
-                        self.__log.warning('%s giving up finding files ...')
+                        self.__log.warning('%s giving up finding files (%s ...)',
+                                           self.name, loc.path)
                         break
                     k += 1
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
-                    self.__log.debug('skip for %s to %s', self, skip_loc)
+                    self.__log.debug('skip for %s to %s', self.name, skip_loc)
                     if skip_stat:
                         self.__log.warning(
                             'skipped %d to %s (%s)',
