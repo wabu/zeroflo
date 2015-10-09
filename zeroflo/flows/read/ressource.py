@@ -281,7 +281,7 @@ class Access(Paramed):
                     if skip_loc.begin > loc.begin + self.skip_time:
                         self.__log.warning('%s giving up finding files (%s ...)',
                                            self.name, loc.path)
-                        break
+                        raise IOError("cannot find %s" % loc.path)
                     k += 1
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
@@ -385,11 +385,16 @@ class LocalReader:
         self.fd = path.open(mode='rb', buffering=0)
         self.eof = False
         if offset:
-            self.fd.seek(offset)
+            n = self.fd.seek(offset)
+            assert not offset - n
 
     @coroutine
     def read_chunk(self, n=102400):
-        return self.fd.read(n)
+        data = self.fd.read(n)
+        if not bool(data):
+            self.eof = True
+            self.fd.close()
+        return data
 
     def at_eof(self):
         return self.eof

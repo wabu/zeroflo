@@ -91,12 +91,14 @@ class Watch(Paramed, Unit):
                 yield from asyncio.sleep(wait)
                 now = pd.Timestamp('now', tz=avail.tz)
 
-            stat = None
+            stat = err = loc = None
             for n in range(self.num_try):
                 try:
                     for avail, access in zip(avails, accesses):
                         if avail <= now:
                             s = (yield from access.stat(time, **tag))
+                            self.__log.debug('%s: %s [%s]',
+                                             access.name, s, time)
                             if s:
                                 stat = s
                                 if stat[1].begin == pd.Timestamp(time,
@@ -129,9 +131,13 @@ class Watch(Paramed, Unit):
                         self.__log.debug('finished with %s-access (%d)',
                                          access.name, len(done))
                     break
-                except OSError:
+                except OSError as e:
                     self.__log.warning('error when getting ressource (%d time)',
                                        n+1, exc_info=True)
+                    err = e
+
+            if not loc:
+                raise err
 
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
