@@ -167,6 +167,7 @@ class Offset(Unit):
     @outport
     def out(): pass
 
+    @coroutine
     def __setup__(self):
         self.offset = 0
 
@@ -174,6 +175,41 @@ class Offset(Unit):
     def process(self, data, tag):
         yield from data >> tag.add(offset=offset) >> self.out
         self.offset += len(data)
+
+
+class Merge(Paramed, Unit):
+    @param
+    def by(self, val='begin'):
+        return val
+
+    @outport
+    def out(): pass
+
+    @coroutine
+    def __setup__(self):
+        self.points = {i: None for i in ['a', 'b']}
+        self.condition = asyncio.Condition()
+
+    @coroutine
+    def push(self, name, val, load):
+        self.points[name] = val
+        yield from self.condition.acquire()
+        try:
+            self.condition.notify_all()
+            yield from self.condition.wait_for(lambda: all(
+                (v != None and v >= val) for v in self.points.values()))
+        finally:
+            self.condition.release()
+
+        yield from load >> self.out
+
+    @inport
+    def a(self, data, tag):
+        yield from self.push('a', tag[self.by], data >> tag)
+
+    @inport
+    def b(self, data, tag):
+        yield from self.push('b', tag[self.by], data >> tag)
 
 
 class Reorder(Paramed, Unit):
