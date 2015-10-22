@@ -187,29 +187,54 @@ class Merge(Paramed, Unit):
 
     @coroutine
     def __setup__(self):
-        self.points = {i: None for i in ['a', 'b']}
-        self.condition = asyncio.Condition()
+        self.queue_a = asyncio.JoinableQueue(1)
+        self.queue_b = asyncio.JoinableQueue(1)
+        asyncio.async(self.loop())
 
     @coroutine
-    def push(self, name, val, load):
-        self.points[name] = val
-        yield from self.condition.acquire()
-        try:
-            self.condition.notify_all()
-            yield from self.condition.wait_for(lambda: all(
-                (v != None and v >= val) for v in self.points.values()))
-        finally:
-            self.condition.release()
+    def __teardown__(self):
+        qs = [self.queue_a, self.queue_b]
+        yield from asyncio.gather(q.put((None, None)) for q in qs)
+        yield from asyncio.gather(q.join() for q in qs)
 
-        yield from load >> self.out
+    @coroutine
+    def loop(self):
+        queue_a, queue_b = self.queue_a, self.queue_b
+        fill_a = fill_b = True
+        while True:
+            if fill_a:
+                val_a, data_a, tag_a = yield from queue_a.get()
+                fill_a = False
+            if fill_b:
+                val_b, data_b, tag_b = yield from queue_b.get()
+                fill_b = False
+
+            if val_a == val_b:
+                data = data_a + data_b
+                tag = tag_b.add(**tag_a)
+                fill_a = fill_b = True
+            elif val_b is None or val_a < val_b:
+                data, tag = data_a, tag_a
+                fill_a = True
+            elif val_a is None or val_b < val_a:
+                data, tag = data_b, tag_b
+                fill_b = True
+
+            yield from data >> tag >> self.out
+
+            if fill_a:
+                queue_a.task_done()
+            if fill_b:
+                queue_b.task_done()
+
 
     @inport
     def a(self, data, tag):
-        yield from self.push('a', tag[self.by], data >> tag)
+        yield from self.queue_a.put((tag[self.by], data, tag))
 
     @inport
     def b(self, data, tag):
-        yield from self.push('b', tag[self.by], data >> tag)
+        yield from self.queue_b.put((tag[self.by], data, tag))
 
 
 class Reorder(Paramed, Unit):
