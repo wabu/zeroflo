@@ -177,6 +177,7 @@ class Offset(Unit):
         self.offset += len(data)
 
 
+@log
 class Merge(Paramed, Unit):
     @param
     def by(self, val='begin'):
@@ -205,20 +206,31 @@ class Merge(Paramed, Unit):
             if fill_a:
                 val_a, data_a, tag_a = yield from queue_a.get()
                 fill_a = False
+                self.__log.debug('got data form a')
             if fill_b:
                 val_b, data_b, tag_b = yield from queue_b.get()
                 fill_b = False
+                self.__log.debug('got data form b')
 
             if val_a == val_b:
                 data = data_a + data_b
                 tag = tag_b.add(**tag_a)
                 fill_a = fill_b = True
+                self.__log.debug('pushing both')
             elif val_b is None or val_a < val_b:
                 data, tag = data_a, tag_a
                 fill_a = True
+                self.__log.debug('pushing a')
             elif val_a is None or val_b < val_a:
                 data, tag = data_b, tag_b
                 fill_b = True
+                self.__log.debug('pushing b')
+            else:
+                self.__log.info('shuting down %s', self)
+                assert val_a is None and val_b is None
+                queue_a.task_done()
+                queue_b.task_done()
+                break
 
             yield from data >> tag >> self.out
 
@@ -230,10 +242,12 @@ class Merge(Paramed, Unit):
 
     @inport
     def a(self, data, tag):
+        self.__log.debug('received on a')
         yield from self.queue_a.put((tag[self.by], data, tag))
 
     @inport
     def b(self, data, tag):
+        self.__log.debug('received on b')
         yield from self.queue_b.put((tag[self.by], data, tag))
 
 
