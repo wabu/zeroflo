@@ -5,6 +5,7 @@ from ..ext import param, Paramed
 import time
 
 from collections import defaultdict
+from heapq import merge
 from pyadds.logging import log
 
 class Timing:
@@ -194,9 +195,11 @@ class Merge(Paramed, Unit):
 
     @coroutine
     def __teardown__(self):
+        self.__log.info('tearing down %s', self)
         qs = [self.queue_a, self.queue_b]
-        yield from asyncio.gather(q.put((None, None)) for q in qs)
+        yield from asyncio.gather(q.put((None, None, None)) for q in qs)
         yield from asyncio.gather(q.join() for q in qs)
+        self.__log.info('tear down of %s finished', self)
 
     @coroutine
     def loop(self):
@@ -213,7 +216,7 @@ class Merge(Paramed, Unit):
                 self.__log.debug('got data form b')
 
             if val_a == val_b:
-                data = data_a + data_b
+                data = list(merge(data_a + data_b))
                 tag = tag_b.add(**tag_a)
                 fill_a = fill_b = True
                 self.__log.debug('pushing both')
