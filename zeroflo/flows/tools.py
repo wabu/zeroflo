@@ -197,8 +197,8 @@ class Merge(Paramed, Unit):
     def __teardown__(self):
         self.__log.info('tearing down %s', self)
         qs = [self.queue_a, self.queue_b]
-        yield from asyncio.gather(q.put((None, None, None)) for q in qs)
-        yield from asyncio.gather(q.join() for q in qs)
+        yield from asyncio.gather(*[q.put((None, None, None)) for q in qs])
+        yield from asyncio.gather(*[q.join() for q in qs])
         self.__log.info('tear down of %s finished', self)
 
     @coroutine
@@ -215,12 +215,17 @@ class Merge(Paramed, Unit):
                 fill_b = False
                 self.__log.debug('got data form b')
 
-            if val_a == val_b:
+            if val_a is None and val_b is None:
+                self.__log.info('shuting down %s', self)
+                queue_a.task_done()
+                queue_b.task_done()
+                break
+            elif val_a == val_b:
                 data = list(merge(data_a + data_b))
                 tag = tag_b.add(**tag_a)
                 fill_a = fill_b = True
                 self.__log.debug('pushing both')
-            elif val_b is None or val_a < val_b:
+            elif val_b is None or val_a is not None and val_a < val_b:
                 data, tag = data_a, tag_a
                 fill_a = True
                 self.__log.debug('pushing a')
@@ -229,11 +234,7 @@ class Merge(Paramed, Unit):
                 fill_b = True
                 self.__log.debug('pushing b')
             else:
-                self.__log.info('shuting down %s', self)
-                assert val_a is None and val_b is None
-                queue_a.task_done()
-                queue_b.task_done()
-                break
+                assert false, "wabus brain messed up"
 
             yield from data >> tag >> self.out
 
@@ -344,7 +345,7 @@ class Collect(Paramed, Unit):
 
     @coroutine
     def __teardown__(self):
-        yield from asyncio.gather([q.put((None, None)) for q in self.queues.values()])
+        yield from asyncio.gather(*[q.put((None, None)) for q in self.queues.values()])
 
     def reduce(self, datas):
         return b''.join(datas)
