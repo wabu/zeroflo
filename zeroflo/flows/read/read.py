@@ -128,15 +128,27 @@ class Watch(Paramed, Unit):
                         else:
                             assert None, "one of the accesses has to be in done"
 
-                        self.__log.debug('finished with %s-access (%d)',
-                                         access.name, len(done))
+                        if res is None:
+                            self.__log.info('ignoring some missing files')
+                        else:
+                            self.__log.debug('finished with %s-access (%d)',
+                                            access.name, len(done))
                     break
                 except OSError as e:
                     self.__log.warning('error when getting ressource (%d time)',
                                        n+1, exc_info=True)
                     err = e
 
+            if not res:  # for ignore errors in ressource
+                before = time
+                time = loc.end
+                continue;
+
             if not loc:
+                if self.ignore_errors:
+                    before = time
+                    time = loc.end
+                    continue
                 raise err
 
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):

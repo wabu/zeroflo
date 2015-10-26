@@ -226,6 +226,10 @@ class Access(Paramed):
         return pd.datetools.to_offset(value)
 
     @param
+    def ignore_error(self, value=False):
+        return value
+
+    @param
     def stable(self, value='30s'):
         return pd.datetools.to_offset(value)
 
@@ -281,7 +285,10 @@ class Access(Paramed):
                     if skip_loc.begin > loc.begin + self.skip_time:
                         self.__log.warning('%s giving up finding files (%s ...)',
                                            self.name, loc.path)
-                        raise IOError("cannot find %s" % loc.path)
+                        if self.ignore_errors:
+                            return self, skip_loc, None
+                        else:
+                            raise IOError("cannot find %s" % loc.path)
                     k += 1
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
