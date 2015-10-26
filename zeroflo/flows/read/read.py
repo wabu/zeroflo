@@ -139,16 +139,7 @@ class Watch(Paramed, Unit):
                                        n+1, exc_info=True)
                     err = e
 
-            if not res:  # for ignore errors in ressource
-                before = time
-                time = loc.end
-                continue;
-
             if not loc:
-                if self.ignore_errors:
-                    before = time
-                    time = loc.end
-                    continue
                 raise err
 
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):
@@ -209,7 +200,15 @@ class Reader(Paramed, Unit):
 
         access = self.accesses[name]
         resource = access.resource(path)
-        reader = (yield from resource.reader())
+        try:
+            reader = (yield from resource.reader())
+        except OSError:
+            if access.ignore_errors:
+                yield from (b''
+                            >> tag.add(flush=True, offset=0, chunk=0, size=0)
+                            >> self.out)
+                return
+            raise
         tag.update(access.tag)
 
         chunksize = self.chunksize
