@@ -226,7 +226,7 @@ class Access(Paramed):
         return pd.datetools.to_offset(value)
 
     @param
-    def ignore_error(self, value=False):
+    def ignore_errors(self, value=False):
         return value
 
     @param
