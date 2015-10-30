@@ -200,8 +200,8 @@ class Writer(Paramed, Unit):
     def close(self):
         if self.handle:
             self.__log.info('flushing %s', self.last)
-            self.handle.close()
             yield from self.handle.drain()
+            self.handle.close()
             self.handle = None
             self.last = None
 
