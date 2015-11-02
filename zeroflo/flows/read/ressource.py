@@ -389,7 +389,10 @@ class UnionDirectory(Directory, UnionRessource):
 
 class LocalReader:
     def __init__(self, path, offset=None):
-        self.fd = path.open(mode='rb', buffering=0)
+        try:
+            self.fd = path.open(mode='rb', buffering=0)
+        except FileNotFoundError:
+            self.fd = path.open(mode='rb', buffering=0)
         self.eof = False
         if offset:
             n = self.fd.seek(offset)
