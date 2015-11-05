@@ -155,6 +155,10 @@ class Matcher(Paramed, Unit):
         return val
 
     @param
+    def write_empty(self, val=True):
+        return val
+
+    @param
     def rules(self, val):
         return {k: re.compile(pat) for k, pat in val.items()}
 
@@ -179,7 +183,7 @@ class Matcher(Paramed, Unit):
         yield from asyncio.gather(*[
             (ls >> tag.add(**{self.tag: out})
                 >> (self.non if out is None else self.out))
-            for out, ls in outs.items()])
+            for out, ls in outs.items() if self.write_empty or ls])
 
 
 class Join(Paramed, Unit):
