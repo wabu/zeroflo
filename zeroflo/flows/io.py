@@ -3,14 +3,15 @@ from ..ext import param, Paramed
 from .read.ressource import LocateByTime
 
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
-import itertools as it
 import re
 
 from contextlib import contextmanager
 
 from pyadds.logging import log, logging
 from pyadds.annotate import delayed
+
 
 @log
 class ListFiles(Paramed, Unit):
@@ -96,7 +97,8 @@ class Reader(Paramed, Unit):
 
                 data = b''.join(chunks)
 
-                tag = tag.add(path=path, completed=self.status, offset=offset, size=size)
+                tag = tag.add(path=path, completed=self.status, offset=offset,
+                              size=size)
                 offset += size
 
                 if skip:
@@ -135,20 +137,21 @@ class PBzReader(Reader):
         while not status.at_eof():
             ins = yield from status.read(1024)
             text += ins
-            *lines,text = text.split(b'\r')
+            *lines, text = text.split(b'\r')
             for l in lines:
                 m = self.extract_status.search(l)
                 if m:
                     self.status = int(m.groups()[0])
 
-
     @coroutine
     def open(self, path):
-        pbzip2 = yield from asyncio.create_subprocess_exec('pbzip2', '-vcd', path,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=int(self.chunksize*2.2))
+        pbzip2 = yield from asyncio.create_subprocess_exec(
+            'pbzip2', '-vcd', path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            limit=int(self.chunksize*2.2))
         if not pbzip2.stdout._transport:
             logging.getLogger('asyncio').warning(
-                    "pipe has not transport, so we're fixing this manually")
+                "pipe has not transport, so we're fixing this manually")
             tr = pbzip2._transport.get_pipe_transport(1)
             pbzip2.stdout.set_transport(tr)
 
@@ -185,6 +188,10 @@ class Writer(Paramed, Unit):
         return val
 
     @param
+    def mktemp(self, val=True):
+        return val
+
+    @param
     def seperator(self, val=b'\n'):
         return val
 
@@ -197,13 +204,27 @@ class Writer(Paramed, Unit):
     def __teardown__(self):
         yield from self.close()
 
+    @coroutine
     def close(self):
         if self.handle:
             self.__log.info('flushing %s', self.last)
             yield from self.handle.drain()
             self.handle.close()
             self.handle = None
+            Path(self.temp).rename(self.last)
             self.last = None
+
+    @coroutine
+    def _open(self, output):
+        if self.mktemp:
+            path, name = output.rsplit('/', 1)
+            prefix, suffix = name.rsplit('.', 1)
+            with NamedTemporaryFile(suffix='.'+suffix, prefix=prefix+'-', dir=path,
+                                    delete=True) as f:
+                self.__log.info('created temprery file %s', f.name)
+                self.temp = output = f.name
+
+        return (yield from self.open(output))
 
     @inport
     def process(self, data, tag):
@@ -216,7 +237,7 @@ class Writer(Paramed, Unit):
             if not self.handle:
                 self.__log.info('opening %s for output', path)
                 self.last = path
-                self.handle = yield from self.open(path)
+                self.handle = yield from self._open(path)
 
             self.handle.write(data)
             if not data.endswith(self.seperator):
