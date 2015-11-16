@@ -208,11 +208,15 @@ class Writer(Paramed, Unit):
     def close(self):
         if self.handle:
             self.__log.info('flushing %s', self.last)
-            yield from self.handle.drain()
-            self.handle.close()
-            self.handle = None
-            Path(self.temp).rename(self.last)
-            self.last = None
+            try:
+                yield from self.handle.drain()
+            except AssertionError:
+                self.__log.info('got strange error for drain', exc_info=True)
+            finally:
+                self.handle.close()
+                self.handle = None
+                Path(self.temp).rename(self.last)
+                self.last = None
 
     @coroutine
     def _open(self, output):
