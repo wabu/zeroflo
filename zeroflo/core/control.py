@@ -26,7 +26,7 @@ class Process:
     @coroutine
     def setup(self):
         self.__log.debug('setting up %s', self)
-        yield from self.tracker.setup()
+        self.trloop = yield from self.tracker.setup()
 
     @coroutine
     def register(self, unit, outs, ins):
@@ -87,12 +87,21 @@ class Process:
                 self.__log.debug('tearing down units')
                 yield from asyncio.gather(*(
                         unit.__teardown__() for unit in self.units.values()))
+                if self.trloop:
+                    self.trloop.cancel()
+                    yield from asyncio.gather(trloop)
+                    if self.trloop.exception():
+                        self.__log.warning('%s in tr-loop', self.trloop.exception())
+                    else:
+                        self.__log.warning('tr-loop returned', self.trloop.result())
+                    self.trloop = None
             except Exception as e:
                 self.__log.error('%s occured when shutting down', e, exc_info=True)
+            yield from asyncio.sleep(.5)
 
-            yield from asyncio.sleep(.2)
             self.__log.debug('exiting')
             asyncio.get_event_loop().stop()
+
         asyncio.async(down())
 
 @log

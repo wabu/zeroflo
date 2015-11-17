@@ -108,7 +108,9 @@ class Receiver(Resolver):
     @coroutine
     def close_chan(self, kind, chan):
         yield from super().close_chan(kind, chan)
-        yield from self.loops.pop(kind)
+        loop = yield from self.loops.pop(kind)
+        loop.cancel()
+        yield from asyncio.gather(loop)
 
         if not self.loops:
             yield from self.queue.put((None, None))

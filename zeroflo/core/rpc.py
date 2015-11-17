@@ -158,6 +158,7 @@ class Master(Track):
         self.__log.debug('await %s // %r', ','.join('%x' % i for i in items), self)
         with (yield from self.condition):
             yield from self.condition.wait_for(pred)
+        self.__log.info('awaited %s // %r', ','.join('%x' % i for i in items), self)
 
     def __repr__(self):
         return '|'.join('%x:%+d' % (i,c) for i,c in self.counter.items())

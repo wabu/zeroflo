@@ -206,6 +206,8 @@ class Writer(Paramed, Unit):
 
     @coroutine
     def close(self):
+        if self._processing:
+            self.__log.warning('shutdown arrived while unit is stil processing')
         if self.handle:
             self.__log.info('flushing %s', self.last)
             try:
@@ -232,6 +234,7 @@ class Writer(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
+        self._processing = True
         path = self.output.location(**tag).path
         if path != self.last:
             yield from self.close()
@@ -247,6 +250,7 @@ class Writer(Paramed, Unit):
             if not data.endswith(self.seperator):
                 self.handle.write(self.seperator)
             yield from self.handle.drain()
+        self._processing = False
 
 
 class PBzWriter(Writer):
