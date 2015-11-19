@@ -41,9 +41,9 @@ class Union(Paramed, Unit):
             pkid = self.pkids[0]
             loads = self.loads[pkid]
             while loads:
-                load = loads.pop(0)
-                yield from load >> self.out
-                if self.autoflush or load[1].flush:
+                data, tag = loads.pop(0)
+                yield from data >> tag >> self.out
+                if self.autoflush or tag.flush:
                     assert not loads, 'more after flush, check your topology'
                     self.pkids.pop(0)
                     self.loads.pop(pkid)

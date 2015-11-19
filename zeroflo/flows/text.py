@@ -159,6 +159,10 @@ class Matcher(Paramed, Unit):
         return val
 
     @param
+    def one_only(self, val=False):
+        return val
+
+    @param
     def rules(self, val):
         return {k: re.compile(pat) for k, pat in val.items()}
 
@@ -180,10 +184,19 @@ class Matcher(Paramed, Unit):
                 k = self.default
             outs[k].append(line)
 
-        yield from asyncio.gather(*[
-            (ls >> tag.add(**{self.tag: out})
-                >> (self.non if out is None else self.out))
-            for out, ls in outs.items() if self.write_empty or ls])
+        if self.one_only:
+            out = [k for k, ls in outs.items() if len(ls)]
+            if len(out) > 1:
+                raise ValueError('only one thingy should match with only_once')
+            out = (out or [self.default])[0]
+            ls = outs[out]
+            yield from ls >> tag.add(**{self.tag: out}) >> self.out
+
+        else:
+            yield from asyncio.gather(*[
+                (ls >> tag.add(**{self.tag: out})
+                    >> (self.non if out is None else self.out))
+                for out, ls in outs.items() if self.write_empty or ls])
 
 
 class Join(Paramed, Unit):
