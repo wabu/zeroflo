@@ -145,6 +145,7 @@ class Filter(Paramed, Unit):
         yield from filt >> tag.add(**self.tags) >> self.out
 
 
+@log
 class Matcher(Paramed, Unit):
     @param
     def tag(self, val='match'):
@@ -160,6 +161,11 @@ class Matcher(Paramed, Unit):
 
     @param
     def one_only(self, val=False):
+        return val
+
+    @param
+    def resolve(self, val='raise'):
+        assert val in {'raise', 'most', 'default'}
         return val
 
     @param
@@ -187,7 +193,18 @@ class Matcher(Paramed, Unit):
         if self.one_only:
             out = [k for k, ls in outs.items() if len(ls)]
             if len(out) > 1:
-                raise ValueError('only one thingy should match with only_once')
+                if self.resolve == 'most':
+                    _, out = max((len(v), o) for o, v in outs.items())
+                    self.__log.warning('%d matches, but one_only given, '
+                                       'using %s with most', len(out), out)
+                elif self.resolve == 'default':
+                    out == self.default
+                    self.__log.warning('%d matches, but one_only given, '
+                                       'using %s as default', len(out), out)
+                else:
+                    raise ValueError(
+                        'only one thingy should match with only_once')
+                out = [out]
             out = (out or [self.default])[0]
             ls = outs[out]
             yield from ls >> tag.add(**{self.tag: out}) >> self.out
