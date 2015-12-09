@@ -57,7 +57,12 @@ class ToFrame(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        df = pd.DataFrame(data or None, columns=self.columns)
+        df = pd.DataFrame(data or None)
+        if len(df.columns) != len(self.columns):
+            df.columns = self.columns[:len(df.columns)]
+            df = df.reindex(columns=self.columns)
+        else:
+            df.columns = self.columns
         if not df.empty:
             df.index += tag.offset or 0
             df[df.applymap(self.na_values.__contains__)] = np.nan
