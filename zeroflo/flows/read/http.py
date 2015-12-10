@@ -124,7 +124,6 @@ class HTTPRessource(Ressource):
             self.__log.debug('returning normaly with status %d %s (%d exspected)', r.status, r.reason, exspect)
 
         if error:
-            self.__log.warning('raising with status %d %s (%d exspected)', r.status, r.reason, exspect)
             raise OSError(r.status,
                           '{} {} Error: {}'.format(r.status, error, r.reason),
                           self.path)

@@ -20,7 +20,6 @@ class WebHDFSRessource(HTTPRessource):
         r = yield from self.conn.get(self.path,
                                      params={'op': 'GETFILESTATUS'})
         if r.status != 200:
-            self.__log.warning('rq to %s returned %d', self.path, r.status)
             return None
         stat = (yield from r.json())["FileStatus"]
         yield from r.release()
