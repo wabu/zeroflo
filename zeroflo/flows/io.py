@@ -197,6 +197,7 @@ class Writer(Paramed, Unit):
 
     @coroutine
     def __setup__(self):
+        self._processing = False
         self.handle = None
         self.last = None
 
