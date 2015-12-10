@@ -12,16 +12,17 @@ coroutine = asyncio.coroutine
 class WebHDFSRessource(HTTPRessource):
     """ ressource access via http """
     def __init__(self, path, conn):
-        super().__init__(path)
-        self.conn = conn
+        super().__init__(path, conn)
 
     @property
     @coroutine
     def stat(self):
-        r = yield from self.conn.get(self.path, params={'op': 'GETFILESTATUS'})
-        if r.status >= 300:
+        r = yield from self.conn.get(self.path,
+                                     params={'op': 'GETFILESTATUS'})
+        if r.status != 200:
+            self.__log.warning('rq to %s returned %d', self.path, r.status)
             return None
-        stat = yield from r.json()["FileStatus"]
+        stat = (yield from r.json())["FileStatus"]
         yield from r.release()
 
         return Stats(stat['pathSuffix'], stat['type'] == 'DIRECTORY',
@@ -68,11 +69,11 @@ class WebHDFSDirectory(WebHDFSRessource, HTTPDirectory):
         r = yield from self.conn.get(self.path, params={'op': 'LISTSTATUS'})
         self.raise_from_status(r, exspect=200)
 
-        lst = yield from r.json()['FileStatuses']['FileStatus']
+        lst = (yield from r.json())['FileStatuses']['FileStatus']
         return list(map(self.extract_stat, lst))
 
     def open(self, name: str):
-        return HTTPRessource('/'.join([self.path, name]), conn=self.conn)
+        return WebHDFSRessource('/'.join([self.path, name]), conn=self.conn)
 
     def go(self, name: str):
-        return HTTPDirectory('/'.join([self.path, name]), conn=self.conn)
+        return WebHDFSDirectory('/'.join([self.path, name]), conn=self.conn)
