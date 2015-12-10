@@ -234,12 +234,12 @@ class Writer(Paramed, Unit):
 
     @inport
     def process(self, data, tag):
-        self._processing = True
         path = self.output.location(**tag).path
         if path != self.last:
             yield from self.close()
             self.last = path
 
+        self._processing = True
         if data:
             if not self.handle:
                 self.__log.info('opening %s for output', path)
