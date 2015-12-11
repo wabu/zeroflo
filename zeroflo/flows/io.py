@@ -205,6 +205,12 @@ class Writer(Paramed, Unit):
     def __teardown__(self):
         yield from self.close()
 
+    def __del__(self):
+        if hasattr(self, 'temp') and Path(self.temp).exists():
+            self.__log.warning('deleting %s', self.temp)
+            Path(self.temp).unlink()
+            self.last = None
+
     @coroutine
     def close(self):
         if self._processing:
@@ -226,12 +232,16 @@ class Writer(Paramed, Unit):
         if self.mktemp:
             path, name = output.rsplit('/', 1)
             prefix, suffix = name.rsplit('.', 1)
-            with NamedTemporaryFile(suffix='.'+suffix, prefix=prefix+'-', dir=path,
-                                    delete=True) as f:
+            with NamedTemporaryFile(suffix='.'+suffix+'.tmp',
+                                    prefix=prefix+'-',
+                                    dir=path, delete=True) as f:
                 self.__log.info('created temprery file %s', f.name)
                 self.temp = output = f.name
 
         return (yield from self.open(output))
+
+    @outport
+    def count(): pass
 
     @inport
     def process(self, data, tag):
@@ -241,6 +251,7 @@ class Writer(Paramed, Unit):
             self.last = path
 
         self._processing = True
+        n=0
         if data:
             if not self.handle:
                 self.__log.info('opening %s for output', path)
@@ -248,9 +259,14 @@ class Writer(Paramed, Unit):
                 self.handle = yield from self._open(path)
 
             self.handle.write(data)
+            n += len(data)
             if not data.endswith(self.seperator):
                 self.handle.write(self.seperator)
-            yield from self.handle.drain()
+                n += len(self.seperator)
+
+            yield from asyncio.gather(
+                self.handle.drain(),
+                (path, n) >> tag >> self.count)
         self._processing = False
 
 
