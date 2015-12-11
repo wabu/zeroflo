@@ -210,7 +210,6 @@ class LocateByTime():
 
 @log
 class Access(Paramed):
-
     def __init__(self, name, root, locate, **opts):
         super().__init__(**opts)
         self.name = name
@@ -294,7 +293,7 @@ class Access(Paramed):
                     skip_stat = yield from skip_res.stat
                     self.__log.debug('skip for %s to %s', self.name, skip_loc)
                     if skip_stat:
-                        self.__log.warning(
+                        self.__log.info(
                             'skipped %d to %s (%s)',
                             k,
                             skip_loc.path,
