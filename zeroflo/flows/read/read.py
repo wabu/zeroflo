@@ -200,6 +200,7 @@ class Reader(Paramed, Unit):
 
         access = self.accesses[name]
         resource = access.resource(path)
+        rq = None
         try:
             reader, rq = (yield from resource.reader())
         except OSError:
