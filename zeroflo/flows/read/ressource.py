@@ -459,7 +459,7 @@ class LocalRessource(Ressource):
             proc.stdout.set_transport(tr)
         if offset:
             yield from proc.stdout.readexactly(offset)
-        return proc.stdout
+        return proc.stdout, None
 
 
 class LocalDirectory(LocalRessource, Directory):

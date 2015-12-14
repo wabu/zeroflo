@@ -203,7 +203,8 @@ class Reader(Paramed, Unit):
         try:
             reader, rq = (yield from resource.reader())
         except OSError:
-            yield from rq.release()
+            if rq:
+                yield from rq.release()
             if access.ignore_errors:
                 yield from (b''
                             >> tag.add(flush=True, offset=0, chunk=0, size=0)
@@ -228,7 +229,8 @@ class Reader(Paramed, Unit):
             try:
                 chunk = yield from (next or reader.read(chunksize))
             except OSError as e:
-                yield from rq.release()
+                if rq:
+                    yield from rq.release()
                 self.__log.warning('%s while reading %s:%d',
                                    e, path, offset, exc_info=True)
                 next = None
@@ -241,7 +243,7 @@ class Reader(Paramed, Unit):
             next = None
 
             # read more data when it is fast enough
-            finish = time.time() + .2
+            finish = time.time() + .4
             while not eof and size < chunksize:
                 timeout = finish - time.time()
                 if timeout <= 0:
@@ -295,7 +297,8 @@ class Reader(Paramed, Unit):
                     eof_continued += 1
                     waits += 1
                     try:
-                        yield from rq.release()
+                        if rq:
+                            yield from rq.release()
                         reader, rq = yield from resource.reader(offset=offset)
                         break
                     except OSError:
@@ -311,7 +314,8 @@ class Reader(Paramed, Unit):
 
         end = time.time()
 
-        yield from rq.release()
+        if rq:
+            yield from rq.release()
         self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d]',
                          path, tag.begin,
                          first-start, end-start,
