@@ -35,7 +35,9 @@ class HTTPConnection:
     def request(self, method, path, **kws):
         kws.update(self.rqs)
         url = '/'.join([self.base, path])
-        return (yield from aiohttp.request(method, url, connector=self.connector, **kws))
+        if 'connector' not in kws:
+            kws['connector'] = self.connector
+        return (yield from aiohttp.request(method, url, **kws))
 
     def __getattr__(self, name):
         if name.startswith('_'):
@@ -116,7 +118,7 @@ class HTTPRessource(Ressource):
                 except asyncio.IncompleteReadError as e:
                     raise OSError from e
 
-        return reader
+        return reader, r
 
     def raise_from_status(self, r, exspect=200):
         error = None

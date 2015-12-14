@@ -57,7 +57,7 @@ class WebHDFSRessource(HTTPRessource):
                                      params=params)
         self.raise_from_status(r, exspect=200)
         reader = r.content
-        return reader
+        return reader, r
 
 
 @log

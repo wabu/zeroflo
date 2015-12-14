@@ -201,8 +201,9 @@ class Reader(Paramed, Unit):
         access = self.accesses[name]
         resource = access.resource(path)
         try:
-            reader = (yield from resource.reader())
+            reader, rq = (yield from resource.reader())
         except OSError:
+            yield from rq.release()
             if access.ignore_errors:
                 yield from (b''
                             >> tag.add(flush=True, offset=0, chunk=0, size=0)
@@ -227,11 +228,12 @@ class Reader(Paramed, Unit):
             try:
                 chunk = yield from (next or reader.read(chunksize))
             except OSError as e:
+                yield from rq.release()
                 self.__log.warning('%s while reading %s:%d',
                                    e, path, offset, exc_info=True)
                 next = None
                 yield from asyncio.sleep(2)
-                reader = yield from resource.reader(offset=offset)
+                reader, rq = yield from resource.reader(offset=offset)
                 chunk = yield from reader.read(chunksize)
             size = len(chunk)
 
@@ -293,7 +295,8 @@ class Reader(Paramed, Unit):
                     eof_continued += 1
                     waits += 1
                     try:
-                        reader = yield from resource.reader(offset=offset)
+                        yield from rq.release()
+                        reader, rq = yield from resource.reader(offset=offset)
                         break
                     except OSError:
                         pass
@@ -308,6 +311,7 @@ class Reader(Paramed, Unit):
 
         end = time.time()
 
+        yield from rq.release()
         self.__log.debug('fetch done %s (%s) [%3.1fs-%3.1fs|%d:%d:%d:%d|%d]',
                          path, tag.begin,
                          first-start, end-start,
