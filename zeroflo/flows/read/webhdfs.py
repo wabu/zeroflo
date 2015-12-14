@@ -18,27 +18,35 @@ class WebHDFSRessource(HTTPRessource):
     @coroutine
     def stat(self):
         r = yield from self.conn.get(self.path,
-                                     params={'op': 'GETFILESTATUS'})
-        if r.status != 200:
-            return None
-        stat = (yield from r.json())["FileStatus"]
-        yield from r.release()
+                                    params={'op': 'GETFILESTATUS'})
+        try:
+            if r.status != 200:
+                return None
+            stat = (yield from r.json())["FileStatus"]
 
-        return Stats(stat['pathSuffix'], stat['type'] == 'DIRECTORY',
-                     pd.Timestamp(stat['modificationTime'], unit='ms'),
-                     stat["length"])
+            return Stats(stat['pathSuffix'], stat['type'] == 'DIRECTORY',
+                        pd.Timestamp(stat['modificationTime'], unit='ms'),
+                        stat["length"])
+        finally:
+            yield from r.release()
 
     @coroutine
     def text(self, encoding=None):
         r = yield from self.conn.get(self.path, allow_redirects=True,
-                                     params={'op': 'OPEN'})
-        return (yield from r.text(encoding=encoding))
+                                    params={'op': 'OPEN'})
+        try:
+            return (yield from r.text(encoding=encoding))
+        finally:
+            yield from r.release()
 
     @coroutine
     def bytes(self):
         r = yield from self.conn.get(self.path, allow_redirects=True,
-                                     params={'op': 'OPEN'})
-        return (yield from r.read())
+                                    params={'op': 'OPEN'})
+        try:
+            return (yield from r.read())
+        finally:
+            yield from r.release()
 
     @coroutine
     def reader(self, offset=None):
@@ -66,10 +74,13 @@ class WebHDFSDirectory(WebHDFSRessource, HTTPDirectory):
     @coroutine
     def stats(self, glob=None):
         r = yield from self.conn.get(self.path, params={'op': 'LISTSTATUS'})
-        self.raise_from_status(r, exspect=200)
+        try:
+            self.raise_from_status(r, exspect=200)
 
-        lst = (yield from r.json())['FileStatuses']['FileStatus']
-        return list(map(self.extract_stat, lst))
+            lst = (yield from r.json())['FileStatuses']['FileStatus']
+            return list(map(self.extract_stat, lst))
+        finally:
+            yield from r.release()
 
     def open(self, name: str):
         return WebHDFSRessource('/'.join([self.path, name]), conn=self.conn)

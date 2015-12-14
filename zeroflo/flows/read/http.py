@@ -76,12 +76,18 @@ class HTTPRessource(Ressource):
     @coroutine
     def text(self, encoding=None):
         r = yield from self.conn.get(self.path)
-        return (yield from r.text(encoding=encoding))
+        try:
+            return (yield from r.text(encoding=encoding))
+        finally:
+            yield from r.release()
 
     @coroutine
     def bytes(self):
         r = yield from self.conn.get(self.path)
-        return (yield from r.read())
+        try:
+            return (yield from r.read())
+        finally:
+            yield from r.release()
 
     @coroutine
     def reader(self, offset=None):
