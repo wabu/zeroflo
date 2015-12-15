@@ -19,6 +19,15 @@ class RemoveNullBytes(Paramed, Unit):
     def process(self, data, tag):
         yield from data.replace(self.null, self.replace) >> tag >> self.out
 
+
+class ReplaceLinefeeds(Unit):
+    @outport
+    def out(): pass
+
+    @inport
+    def process(self, data, tag):
+        yield from data.replace(b'\r\n', b'\r\r') >> tag >> self.out
+
 class Chunker(Paramed, Unit):
     @param
     def seperator(self, val=b'\n'):
