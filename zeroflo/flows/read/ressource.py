@@ -282,7 +282,7 @@ class Access(Paramed):
                     skip_loc = self.locate.location(skip_loc.end, **adds)
                     # TODO wait for available ...
                     if skip_loc.begin > loc.begin + self.skip_time:
-                        self.__log.warning('%s giving up finding files (%s ...)',
+                        self.__log.info('%s giving up finding files (%s ...)',
                                            self.name, loc.path)
                         if self.ignore_errors:
                             return self, skip_loc, None
