@@ -112,12 +112,17 @@ class Watch(Paramed, Unit):
                     else:
                         self.__log.debug('waiting for all (%d) accesses [%s]',
                                          len(accesses), time)
-                        done, pending = yield from asyncio.wait(
-                            [a.get(time, **tag) for a in accesses],
-                            return_when=asyncio.FIRST_COMPLETED)
+                        done = {}
+                        pending = {a.get(time, **tag) for a in accesses}
+                        while pending and not done:
+                            done, pending = yield from asyncio.wait(
+                                pending, return_when=asyncio.FIRST_COMPLETED)
+                            done = {d for d in done if not d.exception()}
+
                         for p in pending:
                             p.cancel()
-
+                        if not done:
+                            d.result()
                         done = {access: (loc, res)
                                 for access, loc, res in [r.result()
                                                          for r in done]}

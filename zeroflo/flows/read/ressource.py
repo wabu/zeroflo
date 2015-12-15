@@ -287,7 +287,8 @@ class Access(Paramed):
                         if self.ignore_errors:
                             return self, skip_loc, None
                         else:
-                            raise IOError("cannot find %s" % loc.path)
+                            raise IOError("cannot find %s till"
+                                          % (loc.path, skip_loc.path))
                     k += 1
                     skip_res = self.root.open(skip_loc.path)
                     skip_stat = yield from skip_res.stat
