@@ -105,6 +105,7 @@ class Watch(Paramed, Unit):
                                                                  tz=avail.tz):
                                     break
 
+                    first = None
                     if stat:
                         access, loc, res = stat
                         self.__log.debug('%s-access is available [%s]',
@@ -117,12 +118,13 @@ class Watch(Paramed, Unit):
                         while pending and not done:
                             done, pending = yield from asyncio.wait(
                                 pending, return_when=asyncio.FIRST_COMPLETED)
+                            first = first or next(iter(done))
                             done = {d for d in done if not d.exception()}
 
                         for p in pending:
                             p.cancel()
                         if not done:
-                            d.result()
+                            first.result()
                         done = {access: (loc, res)
                                 for access, loc, res in [r.result()
                                                          for r in done]}
