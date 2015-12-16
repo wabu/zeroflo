@@ -159,6 +159,10 @@ class Watch(Paramed, Unit):
             if not loc:
                 raise err
 
+            if loc.begin >= pd.Timestamp(end, tz=loc.begin.tz):
+                time = loc.begin
+                break
+
             if loc.end == pd.Timestamp(before, tz=loc.end.tz):
                 self.__log.warning('seems we start too loop %s -> %s - %s',
                                    time, loc.begin, loc.end)
