@@ -105,7 +105,6 @@ class Watch(Paramed, Unit):
                                                                  tz=avail.tz):
                                     break
 
-                    first = None
                     if stat:
                         access, loc, res = stat
                         self.__log.debug('%s-access is available [%s]',
@@ -113,27 +112,38 @@ class Watch(Paramed, Unit):
                     else:
                         self.__log.debug('waiting for all (%d) accesses [%s]',
                                          len(accesses), time)
-                        done = {}
+                        access = locl = res = None
+                        first = None
+                        skipping = set()
                         pending = {a.get(time, **tag) for a in accesses}
-                        while pending and not done:
+                        while pending:
                             done, pending = yield from asyncio.wait(
                                 pending, return_when=asyncio.FIRST_COMPLETED)
                             first = first or next(iter(done))
-                            done = {d for d in done if not d.exception()}
+
+                            for d in done:
+                                if d.exception():
+                                    first = first or d
+                                    continue
+                                access, loc, res = d.result()
+                                if loc.begin <= time:
+                                    break
+                                else:
+                                    skipping.add((max(loc.begin, time),
+                                                  access, loc, res))
+                            else:
+                                continue
+                            break
 
                         for p in pending:
                             p.cancel()
-                        if not done:
-                            first.result()
-                        done = {access: (loc, res)
-                                for access, loc, res in [r.result()
-                                                         for r in done]}
-                        for access in accesses:
-                            if access in done:
-                                loc, res = done[access]
+
+                        if not access:
+                            for _, access, loc, res in sorted(skipping):
                                 break
-                        else:
-                            assert None, "one of the accesses has to be in done"
+                            else:
+                                first.result() # should throw an error
+                                assert None, "one of the accesses has to be in done"
 
                         if res is None:
                             self.__log.info('ignoring some missing files')
