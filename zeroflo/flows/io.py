@@ -215,6 +215,7 @@ class Writer(Paramed, Unit):
     def close(self):
         if self._processing:
             self.__log.warning('shutdown arrived while unit is stil processing')
+
         if self.handle:
             self.__log.info('flushing %s', self.last)
             try:
@@ -226,6 +227,12 @@ class Writer(Paramed, Unit):
                 self.handle = None
                 Path(self.temp).rename(self.last)
                 self.last = None
+
+        elif self.last:
+            self.__log.info('no data for %s, unlinking exisiting file',
+                            self.last)
+            if Path(self.last).exists():
+                Path(self.last).unlink()
 
     @coroutine
     def _open(self, output):
