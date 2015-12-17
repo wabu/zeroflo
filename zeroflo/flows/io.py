@@ -275,7 +275,7 @@ class Writer(Paramed, Unit):
                 self.handle.drain(),
                 (path, n) >> tag >> self.count)
         else:
-                yield from (path, n) >> tag >> self.count)
+            yield from (path, n) >> tag >> self.count
         self._processing = False
 
 
