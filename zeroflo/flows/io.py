@@ -274,6 +274,8 @@ class Writer(Paramed, Unit):
             yield from asyncio.gather(
                 self.handle.drain(),
                 (path, n) >> tag >> self.count)
+        else:
+                yield from (path, n) >> tag >> self.count)
         self._processing = False
 
 
