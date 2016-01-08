@@ -353,6 +353,7 @@ class Filter(Unit):
 
     @inport
     def process(self, data : pd.DataFrame, tag):
-        for key,filt in self.filters.items():
-            data = data[data[key].str.contains(filt)]
+        if not data.empty:
+            for key,filt in self.filters.items():
+                data = data[data[key].str.contains(filt)]
         yield from data >> tag >> self.out
