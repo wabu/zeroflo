@@ -9,7 +9,7 @@ class RemoveNullBytes(Paramed, Unit):
         return val
 
     @param
-    def replace(self, val=b'  '):
+    def replace(self, val=b' '):
         return val
 
     @outport
