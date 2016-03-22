@@ -27,7 +27,7 @@ class Watch(Paramed, Unit):
         return pd.datetools.to_offset(value)
 
     @param
-    def skip_num(self, value=240):
+    def skip_num(self, value=720):
         return value
 
     @param
