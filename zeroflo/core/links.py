@@ -10,6 +10,7 @@ from pyadds import spawn
 from pyadds.logging import log, logging
 
 from .zmqtools import create_zmq_stream
+from ..compat import JoinableQueue
 
 linkers = {}
 
@@ -73,7 +74,7 @@ class LocalLinker(Linker):
         try:
             return self.queues[key]
         except KeyError:
-            return self.queues.setdefault(key, asyncio.JoinableQueue(1))
+            return self.queues.setdefault(key, JoinableQueue(1))
 
     @coroutine
     def mk_in(self, endpoint):

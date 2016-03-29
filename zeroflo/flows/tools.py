@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from heapq import merge
 from pyadds.logging import log
+from ..compat import JoinableQueue
 
 class Timing:
     def __init__(self):
@@ -189,8 +190,8 @@ class Merge(Paramed, Unit):
 
     @coroutine
     def __setup__(self):
-        self.queue_a = asyncio.JoinableQueue(1)
-        self.queue_b = asyncio.JoinableQueue(1)
+        self.queue_a = JoinableQueue(1)
+        self.queue_b = JoinableQueue(1)
         asyncio.async(self.loop())
 
     @coroutine

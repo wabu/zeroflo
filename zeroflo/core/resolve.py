@@ -5,6 +5,7 @@ import asyncio
 from asyncio import coroutine
 
 from .links import linkers
+from ..compat import JoinableQueue
 
 from pyadds.logging import log
 from pyadds.forkbug import maybug
@@ -83,7 +84,7 @@ class Receiver(Resolver):
     def __init__(self, endpoint, tracker):
         super().__init__(endpoint, tracker)
 
-        self.queue = asyncio.JoinableQueue(1)
+        self.queue = JoinableQueue(1)
         self.portmap = {}
         self.loops = {}
         self.main = None
