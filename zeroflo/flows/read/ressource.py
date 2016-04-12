@@ -2,6 +2,7 @@ from pyadds.annotate import cached
 from ...ext.params import param, Paramed
 
 import pandas as pd
+import dateutil
 
 import asyncio
 coroutine = asyncio.coroutine
@@ -442,7 +443,7 @@ class LocalRessource(Ressource):
                 pd.Timestamp(
                     stat.st_mtime,
                     unit='s',
-                    tz=pd.datetools.dateutil.tz.tzlocal()),
+                    tz=dateutil.tz.tzlocal()),
                 stat.st_size)
         except FileNotFoundError:
             return
