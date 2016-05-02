@@ -4,6 +4,7 @@ from pyadds.annotate import cached
 
 import logging
 from functools import wraps
+from contextlib import contextmanager
 
 from pyadds import spawn
 
@@ -84,8 +85,14 @@ class Context:
         setup()
         return self
 
+    @contextmanager
     def run(self):
-        return self
+        try:
+            self.activate()
+            yield self
+        finally:
+            self.deactivate()
+            self.shutdown()
 
 
 def get_active(key='ctx'):
