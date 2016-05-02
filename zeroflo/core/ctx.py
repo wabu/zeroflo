@@ -92,7 +92,7 @@ class Context:
             yield self
         finally:
             self.deactivate()
-            self.shutdown()
+            self.control.shutdown()
 
 
 def get_active(key='ctx'):
