@@ -9,14 +9,28 @@ from contextlib import contextmanager
 from pyadds import spawn
 
 
-def setup_logging():
+def setup_logging(level='INFO'):
     logging.basicConfig(format='%(levelname)-7s %(message)s'
                                '\n        \\\\ '
                                '%(asctime)s | '
                                '%(levelname).1s:%(levelno)2d | '
                                '%(processName)s | %(name)s')
-    logging.getLogger().setLevel("INFO")
+    logging.getLogger().setLevel('INFO')
     logging.getLogger('asyncio').setLevel("WARNING")
+
+    if isinstance(level, dict):
+        for m, l in level.items():
+            logging.getLogger(m).setLevel(l)
+    else:
+        logging.getLogger().setLevel(level)
+
+
+class Setup:
+    def __init__(self, level='INFO'):
+        self.level = level
+
+    def __call__(self):
+        setup_logging(level=self.level)
 
 
 class CallList(list):

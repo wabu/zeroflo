@@ -299,7 +299,7 @@ class Access(Paramed):
                             'skipped %d to %s (%s)',
                             k,
                             skip_loc.path,
-                            skip_loc.available)
+                            skip_loc.begin)
                         res = skip_res
                         loc = skip_loc
                         stat = skip_stat
