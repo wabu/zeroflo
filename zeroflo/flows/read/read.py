@@ -120,7 +120,7 @@ class Watch(Paramed, Unit):
                             done, pending = yield from asyncio.wait(
                                 pending, return_when=asyncio.FIRST_COMPLETED)
                             first = first or next(iter(done))
-                            self.__log('%s first of %s', first, done)
+                            self.__log.debug('%s first of %s', first, done)
 
                             for d in done:
                                 if d.exception():
