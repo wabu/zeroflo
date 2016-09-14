@@ -120,6 +120,7 @@ class Watch(Paramed, Unit):
                             done, pending = yield from asyncio.wait(
                                 pending, return_when=asyncio.FIRST_COMPLETED)
                             first = first or next(iter(done))
+                            self.__log('%s first of %s', first, done)
 
                             for d in done:
                                 if d.exception():
@@ -142,6 +143,8 @@ class Watch(Paramed, Unit):
                             for _, access, loc, res in sorted(skipping):
                                 break
                             else:
+                                self.__log.warning('throwing error from %s',
+                                                   first)
                                 first.result() # should throw an error
                                 assert None, "one of the accesses has to be in done"
 
