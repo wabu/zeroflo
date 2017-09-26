@@ -406,7 +406,7 @@ class Gunzip(Unit):
             self.offset += size
 
             tag = tag.add(offset=self.offset, size=size)
-            if flush and not data.unconsumed_tail and not data.unused_data:
+            if flush and not decomp.unconsumed_tail and not decomp.unused_data:
                 tag = tag.add(flush=flush)
             yield from data >> tag >> self.out
 
