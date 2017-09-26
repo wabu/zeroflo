@@ -60,7 +60,7 @@ class Tag(dict):
         new.update(kws)
         return new
 
-    def del(self, *keys):
+    def remove(self, *keys):
         new = Tag(self)
         for k in keys:
             del new[k]

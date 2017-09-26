@@ -388,7 +388,7 @@ class Gunzip(Unit):
     @inport
     def process(self, raw, tag):
         flush = tag.flush
-        tag = tag.del('flush')
+        tag = tag.remove('flush')
 
         if tag.offset == 0 and self.decomp:
             yield from self.flush(tag)
