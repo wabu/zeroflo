@@ -60,6 +60,12 @@ class Tag(dict):
         new.update(kws)
         return new
 
+    def del(self, *keys):
+        new = Tag(self)
+        for k in keys:
+            del new[k]
+        return new
+
     @classmethod
     def new(cls, **kws):
         return cls(kws)

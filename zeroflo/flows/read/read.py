@@ -387,6 +387,9 @@ class Gunzip(Unit):
 
     @inport
     def process(self, raw, tag):
+        flush = tag.flush
+        tag = tag.del('flush')
+
         if tag.offset == 0 and self.decomp:
             yield from self.flush(tag)
 
@@ -402,9 +405,10 @@ class Gunzip(Unit):
             size = len(data)
             self.offset += size
 
-            yield from data >> tag.add(offset=self.offset,
-                                       size=size,
-                                       flush=tag.flush and bool(raw)) >> self.out
+            tag = tag.add(offset=self.offset, size=size)
+            if flush and not data.unconsumed_tail and not data.unused_data:
+                tag = tag.add(flush=flush)
+            yield from data >> tag >> self.out
 
             raw = decomp.unconsumed_tail
             if not raw:
