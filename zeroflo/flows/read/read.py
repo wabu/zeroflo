@@ -390,18 +390,24 @@ class Gunzip(Unit):
         if tag.offset == 0 and self.decomp:
             yield from self.flush(tag)
 
-        if not self.decomp:
-            decomp = self.decomp = zlib.decompressobj(zlib.MAX_WBITS | 32)
-            self.offset = 0
-        else:
-            decomp = self.decomp
+        while raw:
+            if not self.decomp:
+                decomp = self.decomp = zlib.decompressobj(zlib.MAX_WBITS | 32)
+                self.offset = 0
+            else:
+                decomp = self.decomp
 
-        data = decomp.decompress(raw)
+            data = decomp.decompress(raw)
 
-        size = len(data)
-        self.offset += size
+            size = len(data)
+            self.offset += size
 
-        yield from data >> tag.add(offset=self.offset, size=size) >> self.out
+            yield from data >> tag.add(offset=self.offset, size=size) >> self.out
+
+            raw = decomp.unconsumed_tail
+            if not raw:
+                raw = decomp.unused_data
+                self.decomp = None
 
         if tag.flush:
             yield from self.flush(tag)
