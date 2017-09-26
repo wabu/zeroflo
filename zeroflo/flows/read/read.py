@@ -402,7 +402,9 @@ class Gunzip(Unit):
             size = len(data)
             self.offset += size
 
-            yield from data >> tag.add(offset=self.offset, size=size) >> self.out
+            yield from data >> tag.add(offset=self.offset,
+                                       size=size,
+                                       flush=tag.flush and bool(raw)) >> self.out
 
             raw = decomp.unconsumed_tail
             if not raw:
