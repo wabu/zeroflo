@@ -63,7 +63,8 @@ class Tag(dict):
     def remove(self, *keys):
         new = Tag(self)
         for k in keys:
-            del new[k]
+            if k in new:
+                del new[k]
         return new
 
     @classmethod
